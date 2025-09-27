@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 set -e
 
@@ -177,20 +177,17 @@ EOF
 run_performance_tests() {
     log "Starting comprehensive performance tests..."
 
-    # Test scenarios
-    declare -A test_scenarios=(
-        ["small-burst"]="5000 512 2000"
-        ["baseline"]="${BASELINE_MESSAGES} ${BASELINE_SIZE} ${BASELINE_RATE}"
-        ["large-messages"]="2000 8192 500"
-        ["high-throughput"]="20000 1024 5000"
-        ["sustained-load"]="50000 1024 1000"
+    # Test scenarios (name:messages:size:rate)
+    local scenarios=(
+        "small-burst:5000:512:2000"
+        "baseline:${BASELINE_MESSAGES}:${BASELINE_SIZE}:${BASELINE_RATE}"
+        "large-messages:2000:8192:500"
+        "high-throughput:20000:1024:5000"
+        "sustained-load:50000:1024:1000"
     )
 
-    for scenario in "${!test_scenarios[@]}"; do
-        local params=(${test_scenarios[$scenario]})
-        local num_messages=${params[0]}
-        local message_size=${params[1]}
-        local rate=${params[2]}
+    for scenario_spec in "${scenarios[@]}"; do
+        IFS=':' read -r scenario num_messages message_size rate <<< "$scenario_spec"
 
         local producer_result="${RESULTS_DIR}/producer_${scenario}_${TIMESTAMP}.log"
         local consumer_result="${RESULTS_DIR}/consumer_${scenario}_${TIMESTAMP}.log"

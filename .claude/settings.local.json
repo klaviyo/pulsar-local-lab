@@ -11,7 +11,11 @@
       "WebSearch",
       "Bash(timeout:*)",
       "Bash(nc:*)",
-      "Bash(WARMUP_MESSAGES=50 BASELINE_MESSAGES=100 ./baseline-test.sh --help)"
+      "Bash(WARMUP_MESSAGES=50 BASELINE_MESSAGES=100 ./baseline-test.sh --help)",
+      "Bash(WARMUP_MESSAGES=10 BASELINE_MESSAGES=20 timeout 30s ./baseline-test.sh)",
+      "Bash(WARMUP_MESSAGES=10 BASELINE_MESSAGES=20 timeout 30s test-scripts/performance/baseline-test.sh)",
+      "Bash(env WARMUP_MESSAGES=10 BASELINE_MESSAGES=20 timeout 30s test-scripts/performance/baseline-test.sh)",
+      "Bash(env WARMUP_MESSAGES=10 BASELINE_MESSAGES=20 timeout 30s ./baseline-test.sh)"
     ],
     "deny": [],
     "ask": []
