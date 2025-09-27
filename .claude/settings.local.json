@@ -10,7 +10,8 @@
       "Bash(curl:*)",
       "WebSearch",
       "Bash(timeout:*)",
-      "Bash(nc:*)"
+      "Bash(nc:*)",
+      "Bash(WARMUP_MESSAGES=50 BASELINE_MESSAGES=100 ./baseline-test.sh --help)"
     ],
     "deny": [],
     "ask": []

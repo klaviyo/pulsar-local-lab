@@ -100,14 +100,14 @@ run_producer_test() {
     # Use docker exec to run pulsar-perf inside the broker container
     if command -v docker > /dev/null 2>&1 && docker ps --format "table {{.Names}}" | grep -q "broker-1"; then
         docker exec broker-1 bin/pulsar-perf produce \
-            --service-url "${BROKER_URL}" \
-            --topic "${TEST_TOPIC}" \
-            --rate "${rate}" \
-            --num-messages "${num_messages}" \
-            --size "${message_size}" \
-            --batch-time-period 100 \
-            --max-pending 1000 \
-            --producer-name "${test_name}-producer" \
+            -u "${BROKER_URL}" \
+            -r "${rate}" \
+            -m "${num_messages}" \
+            -s "${message_size}" \
+            -b 100 \
+            -o 1000 \
+            -pn "${test_name}-producer" \
+            "${TEST_TOPIC}" \
             2>&1 | tee "${result_file}"
     else
         log_error "Docker or broker container not available"
@@ -126,13 +126,12 @@ run_consumer_test() {
 
     if command -v docker > /dev/null 2>&1 && docker ps --format "table {{.Names}}" | grep -q "broker-1"; then
         docker exec broker-1 bin/pulsar-perf consume \
-            --service-url "${BROKER_URL}" \
-            --topic "${TEST_TOPIC}" \
-            --subscription-name "${TEST_SUBSCRIPTION}-${test_name}" \
-            --subscription-type Shared \
-            --num-messages "${num_messages}" \
-            --receiver-queue-size 1000 \
-            --consumer-name "${test_name}-consumer" \
+            -u "${BROKER_URL}" \
+            -ss "${TEST_SUBSCRIPTION}-${test_name}" \
+            -st Shared \
+            -m "${num_messages}" \
+            -q 1000 \
+            "${TEST_TOPIC}" \
             2>&1 | tee "${result_file}"
     else
         log_error "Docker or broker container not available"
