@@ -1,0 +1,400 @@
+networks:
+  pulsar-network:
+    driver: bridge
+
+volumes:
+  zookeeper-data:
+  bookie-1-data:
+  bookie-2-data:
+  bookie-3-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+  # ZooKeeper - stable version, doesn't change during Pulsar upgrades
+  zookeeper:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: zookeeper-upgrade
+    restart: on-failure
+    networks:
+      - pulsar-network
+    volumes:
+      - zookeeper-data:/pulsar/data
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - PULSAR_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/zookeeper.conf &&
+               bin/generate-zookeeper-config.sh conf/zookeeper.conf &&
+               exec bin/pulsar zookeeper"
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD", "bin/pulsar", "zookeeper-shell", "-server", "zookeeper:2181", "ls", "/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Initialize cluster metadata with old version
+  pulsar-init:
+    image: ${PULSAR_OLD_VERSION:-apachepulsar/pulsar:3.0.2}
+    container_name: pulsar-init-upgrade
+    networks:
+      - pulsar-network
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - zkServers=zookeeper:2181
+    command: >
+      bash -c "
+        echo 'Waiting for ZooKeeper to be ready...' &&
+        sleep 15 &&
+        echo 'Initializing BookKeeper metadata...' &&
+        bin/apply-config-from-env.py conf/bookkeeper.conf &&
+        bin/bookkeeper shell metaformat --nonInteractive --force &&
+        echo 'Initializing Pulsar cluster metadata...' &&
+        bin/pulsar initialize-cluster-metadata --cluster pulsar-cluster-upgrade --zookeeper zookeeper:2181 --configuration-store zookeeper:2181 --web-service-url http://broker-1:8080 --web-service-url-tls https://broker-1:8443 --broker-service-url pulsar://broker-1:6650 --broker-service-url-tls pulsar+ssl://broker-1:6651 &&
+        echo 'Metadata initialization completed successfully' &&
+        touch /tmp/init-completed
+      "
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/init-completed"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
+  # BookKeeper nodes - will be upgraded one by one
+  bookie-1:
+    image: ${BOOKIE_1_VERSION:-apachepulsar/pulsar:3.0.2}
+    container_name: bookie-1-upgrade
+    restart: on-failure
+    networks:
+      - pulsar-network
+    environment:
+      - clusterName=pulsar-cluster-upgrade
+      - zkServers=zookeeper:2181
+      - metadataServiceUri=metadata-store:zk:zookeeper:2181
+      - advertisedAddress=bookie-1
+      - BOOKIE_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
+      - ensemblePlacementPolicy=org.apache.bookkeeper.client.RackawareEnsemblePlacementPolicy
+      - journalDirectories=/pulsar/data/bookkeeper/journal
+      - ledgerDirectories=/pulsar/data/bookkeeper/ledgers
+      - journalSyncData=true
+      - rereplicationEntryBatchSize=100
+      # Backward compatibility settings
+      - useShortHostName=true
+      - bookiePort=3181
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      pulsar-init:
+        condition: service_healthy
+    volumes:
+      - bookie-1-data:/pulsar/data
+    command: >
+      bash -c "
+        echo 'Waiting for metadata initialization to complete...' &&
+        sleep 20 &&
+        echo 'Starting BookKeeper bookie...' &&
+        bin/apply-config-from-env.py conf/bookkeeper.conf &&
+        bin/bookkeeper bookie
+      "
+    ports:
+      - "3181:3181"
+    healthcheck:
+      test: ["CMD", "bin/bookkeeper", "shell", "bookiesanity"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  bookie-2:
+    image: ${BOOKIE_2_VERSION:-apachepulsar/pulsar:3.0.2}
+    container_name: bookie-2-upgrade
+    restart: on-failure
+    networks:
+      - pulsar-network
+    environment:
+      - clusterName=pulsar-cluster-upgrade
+      - zkServers=zookeeper:2181
+      - metadataServiceUri=metadata-store:zk:zookeeper:2181
+      - advertisedAddress=bookie-2
+      - BOOKIE_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
+      - ensemblePlacementPolicy=org.apache.bookkeeper.client.RackawareEnsemblePlacementPolicy
+      - journalDirectories=/pulsar/data/bookkeeper/journal
+      - ledgerDirectories=/pulsar/data/bookkeeper/ledgers
+      - journalSyncData=true
+      - rereplicationEntryBatchSize=100
+      - useShortHostName=true
+      - bookiePort=3181
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      pulsar-init:
+        condition: service_healthy
+    volumes:
+      - bookie-2-data:/pulsar/data
+    command: >
+      bash -c "
+        echo 'Waiting for metadata initialization to complete...' &&
+        sleep 20 &&
+        echo 'Starting BookKeeper bookie...' &&
+        bin/apply-config-from-env.py conf/bookkeeper.conf &&
+        bin/bookkeeper bookie
+      "
+    ports:
+      - "3182:3181"
+    healthcheck:
+      test: ["CMD", "bin/bookkeeper", "shell", "bookiesanity"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  bookie-3:
+    image: ${BOOKIE_3_VERSION:-apachepulsar/pulsar:3.0.2}
+    container_name: bookie-3-upgrade
+    restart: on-failure
+    networks:
+      - pulsar-network
+    environment:
+      - clusterName=pulsar-cluster-upgrade
+      - zkServers=zookeeper:2181
+      - metadataServiceUri=metadata-store:zk:zookeeper:2181
+      - advertisedAddress=bookie-3
+      - BOOKIE_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
+      - ensemblePlacementPolicy=org.apache.bookkeeper.client.RackawareEnsemblePlacementPolicy
+      - journalDirectories=/pulsar/data/bookkeeper/journal
+      - ledgerDirectories=/pulsar/data/bookkeeper/ledgers
+      - journalSyncData=true
+      - rereplicationEntryBatchSize=100
+      - useShortHostName=true
+      - bookiePort=3181
+    depends_on:
+      zookeeper:
+        condition: service_healthy
+      pulsar-init:
+        condition: service_healthy
+    volumes:
+      - bookie-3-data:/pulsar/data
+    command: >
+      bash -c "
+        echo 'Waiting for metadata initialization to complete...' &&
+        sleep 20 &&
+        echo 'Starting BookKeeper bookie...' &&
+        bin/apply-config-from-env.py conf/bookkeeper.conf &&
+        bin/bookkeeper bookie
+      "
+    ports:
+      - "3183:3181"
+    healthcheck:
+      test: ["CMD", "bin/bookkeeper", "shell", "bookiesanity"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Pulsar Brokers - will be upgraded in rolling fashion
+  broker-1:
+    image: ${BROKER_1_VERSION:-apachepulsar/pulsar:3.0.2}
+    container_name: broker-1-upgrade
+    restart: on-failure
+    networks:
+      - pulsar-network
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - zookeeperServers=zookeeper:2181
+      - clusterName=pulsar-cluster-upgrade
+      - managedLedgerDefaultEnsembleSize=3
+      - managedLedgerDefaultWriteQuorum=2
+      - managedLedgerDefaultAckQuorum=2
+      - advertisedAddress=broker-1
+      - advertisedListeners=external:pulsar://127.0.0.1:6650
+      # Conservative settings for upgrade testing
+      - loadManagerClassName=org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl
+      - brokerDeduplicationEnabled=true
+      - topicLevelPoliciesEnabled=true
+      - systemTopicEnabled=true
+      - brokerDeleteInactiveTopicsEnabled=false
+      # Backward compatibility
+      - protocolHandlerDirectory=./protocols
+      - narExtractionDirectory=/pulsar/nar-extraction
+      # Performance settings
+      - maxMessageSize=5242880
+      - defaultRetentionTimeInMinutes=10080
+      - defaultRetentionSizeInMB=1000
+      # Metrics
+      - exposeTopicLevelMetricsInPrometheus=true
+      - PULSAR_MEM=-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g
+    depends_on:
+      - zookeeper
+      - bookie-1
+      - bookie-2
+      - bookie-3
+    ports:
+      - "8080:8080"
+      - "6650:6650"
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/broker.conf &&
+               exec bin/pulsar broker"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/admin/v2/clusters/pulsar-cluster-upgrade"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  broker-2:
+    image: ${BROKER_2_VERSION:-apachepulsar/pulsar:3.0.2}
+    container_name: broker-2-upgrade
+    restart: on-failure
+    networks:
+      - pulsar-network
+    environment:
+      - metadataStoreUrl=zk:zookeeper:2181
+      - zookeeperServers=zookeeper:2181
+      - clusterName=pulsar-cluster-upgrade
+      - managedLedgerDefaultEnsembleSize=3
+      - managedLedgerDefaultWriteQuorum=2
+      - managedLedgerDefaultAckQuorum=2
+      - advertisedAddress=broker-2
+      - advertisedListeners=external:pulsar://127.0.0.1:6651
+      - loadManagerClassName=org.apache.pulsar.broker.loadbalance.impl.ModularLoadManagerImpl
+      - brokerDeduplicationEnabled=true
+      - topicLevelPoliciesEnabled=true
+      - systemTopicEnabled=true
+      - brokerDeleteInactiveTopicsEnabled=false
+      - protocolHandlerDirectory=./protocols
+      - narExtractionDirectory=/pulsar/nar-extraction
+      - maxMessageSize=5242880
+      - defaultRetentionTimeInMinutes=10080
+      - defaultRetentionSizeInMB=1000
+      - exposeTopicLevelMetricsInPrometheus=true
+      - PULSAR_MEM=-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g
+    depends_on:
+      - zookeeper
+      - bookie-1
+      - bookie-2
+      - bookie-3
+    ports:
+      - "8081:8080"
+      - "6651:6650"
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/broker.conf &&
+               exec bin/pulsar broker"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/admin/v2/clusters/pulsar-cluster-upgrade"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Producer for continuous load during upgrade
+  continuous-producer:
+    image: ${PRODUCER_VERSION:-apachepulsar/pulsar:3.0.2}
+    container_name: continuous-producer
+    networks:
+      - pulsar-network
+    environment:
+      - PULSAR_MEM=-Xms512m -Xmx512m
+    depends_on:
+      broker-1:
+        condition: service_healthy
+      broker-2:
+        condition: service_healthy
+    command: >
+      bash -c "
+        sleep 30 &&
+        echo 'Starting continuous producer for upgrade testing...' &&
+        bin/pulsar-perf produce \
+          --service-url pulsar://broker-1:6650 \
+          --topic persistent://public/default/upgrade-test-topic \
+          --rate 100 \
+          --num-messages 0 \
+          --size 1024 \
+          --batch-time-period 1000 \
+          --max-pending 1000 \
+          --producer-name upgrade-test-producer || echo 'Producer stopped'
+      "
+    profiles:
+      - continuous-load
+
+  # Consumer for continuous load during upgrade
+  continuous-consumer:
+    image: ${CONSUMER_VERSION:-apachepulsar/pulsar:3.0.2}
+    container_name: continuous-consumer
+    networks:
+      - pulsar-network
+    environment:
+      - PULSAR_MEM=-Xms512m -Xmx512m
+    depends_on:
+      broker-1:
+        condition: service_healthy
+      broker-2:
+        condition: service_healthy
+    command: >
+      bash -c "
+        sleep 35 &&
+        echo 'Starting continuous consumer for upgrade testing...' &&
+        bin/pulsar-perf consume \
+          --service-url pulsar://broker-1:6650 \
+          --topic persistent://public/default/upgrade-test-topic \
+          --subscription-name upgrade-test-sub \
+          --subscription-type Shared \
+          --receiver-queue-size 1000 \
+          --consumer-name upgrade-test-consumer || echo 'Consumer stopped'
+      "
+    profiles:
+      - continuous-load
+
+  # Version upgrade helper service
+  upgrade-coordinator:
+    image: alpine:3.18
+    container_name: upgrade-coordinator
+    networks:
+      - pulsar-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./upgrade-scripts:/scripts:ro
+    command: ["sleep", "infinity"]
+    depends_on:
+      - zookeeper
+    profiles:
+      - upgrade
+
+  # Monitoring
+  prometheus:
+    image: prom/prometheus:v2.47.2
+    container_name: prometheus-upgrade
+    networks:
+      - pulsar-network
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ../../monitoring/prometheus/prometheus-upgrade.yml:/etc/prometheus/prometheus.yml:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--storage.tsdb.retention.time=24h'
+      - '--web.enable-lifecycle'
+      - '--log.level=warn'
+    depends_on:
+      - broker-1
+      - broker-2
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: grafana-upgrade
+    networks:
+      - pulsar-network
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/upgrade-monitoring.json
+    depends_on:
+      - prometheus

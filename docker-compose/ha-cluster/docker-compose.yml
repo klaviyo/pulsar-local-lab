@@ -1,0 +1,617 @@
+networks:
+  pulsar-network:
+    driver: bridge
+  chaos-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+volumes:
+  zookeeper-1-data:
+  zookeeper-2-data:
+  zookeeper-3-data:
+  bookie-1-data:
+  bookie-2-data:
+  bookie-3-data:
+  bookie-4-data:
+  bookie-5-data:
+  prometheus-data:
+  grafana-data:
+
+services:
+  # ZooKeeper ensemble for HA
+  zookeeper-1:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: zookeeper-1
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    volumes:
+      - zookeeper-1-data:/pulsar/data
+    environment:
+      - metadataStoreUrl=zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - PULSAR_MEM=-Xms256m -Xmx256m -XX:MaxDirectMemorySize=128m
+      - ZOO_MY_ID=1
+      - ZOO_SERVERS=server.1=zookeeper-1:2888:3888;2181 server.2=zookeeper-2:2888:3888;2181 server.3=zookeeper-3:2888:3888;2181
+    command: >
+      bash -c "
+        echo \$ZOO_MY_ID > /pulsar/data/myid &&
+        echo 'server.1=zookeeper-1:2888:3888' >> conf/zookeeper.conf &&
+        echo 'server.2=zookeeper-2:2888:3888' >> conf/zookeeper.conf &&
+        echo 'server.3=zookeeper-3:2888:3888' >> conf/zookeeper.conf &&
+        bin/apply-config-from-env.py conf/zookeeper.conf &&
+        exec bin/pulsar zookeeper
+      "
+    ports:
+      - "2181:2181"
+    healthcheck:
+      test: ["CMD", "bin/pulsar", "zookeeper-shell", "-server", "zookeeper-1:2181", "ls", "/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  zookeeper-2:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: zookeeper-2
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    volumes:
+      - zookeeper-2-data:/pulsar/data
+    environment:
+      - metadataStoreUrl=zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - PULSAR_MEM=-Xms256m -Xmx256m -XX:MaxDirectMemorySize=128m
+      - ZOO_MY_ID=2
+      - ZOO_SERVERS=server.1=zookeeper-1:2888:3888;2181 server.2=zookeeper-2:2888:3888;2181 server.3=zookeeper-3:2888:3888;2181
+    command: >
+      bash -c "
+        echo \$ZOO_MY_ID > /pulsar/data/myid &&
+        echo 'server.1=zookeeper-1:2888:3888' >> conf/zookeeper.conf &&
+        echo 'server.2=zookeeper-2:2888:3888' >> conf/zookeeper.conf &&
+        echo 'server.3=zookeeper-3:2888:3888' >> conf/zookeeper.conf &&
+        bin/apply-config-from-env.py conf/zookeeper.conf &&
+        exec bin/pulsar zookeeper
+      "
+    ports:
+      - "2182:2181"
+    healthcheck:
+      test: ["CMD", "bin/pulsar", "zookeeper-shell", "-server", "zookeeper-2:2181", "ls", "/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  zookeeper-3:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: zookeeper-3
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    volumes:
+      - zookeeper-3-data:/pulsar/data
+    environment:
+      - metadataStoreUrl=zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - PULSAR_MEM=-Xms256m -Xmx256m -XX:MaxDirectMemorySize=128m
+      - ZOO_MY_ID=3
+      - ZOO_SERVERS=server.1=zookeeper-1:2888:3888;2181 server.2=zookeeper-2:2888:3888;2181 server.3=zookeeper-3:2888:3888;2181
+    command: >
+      bash -c "
+        echo \$ZOO_MY_ID > /pulsar/data/myid &&
+        echo 'server.1=zookeeper-1:2888:3888' >> conf/zookeeper.conf &&
+        echo 'server.2=zookeeper-2:2888:3888' >> conf/zookeeper.conf &&
+        echo 'server.3=zookeeper-3:2888:3888' >> conf/zookeeper.conf &&
+        bin/apply-config-from-env.py conf/zookeeper.conf &&
+        exec bin/pulsar zookeeper
+      "
+    ports:
+      - "2183:2181"
+    healthcheck:
+      test: ["CMD", "bin/pulsar", "zookeeper-shell", "-server", "zookeeper-3:2181", "ls", "/"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Initialize cluster metadata
+  pulsar-init:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: pulsar-init
+    networks:
+      - pulsar-network
+    environment:
+      - metadataStoreUrl=zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - zkServers=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+    command: >
+      bash -c "
+        echo 'Waiting for ZooKeeper ensemble to be ready...' &&
+        sleep 30 &&
+        echo 'Initializing BookKeeper metadata...' &&
+        bin/apply-config-from-env.py conf/bookkeeper.conf &&
+        bin/bookkeeper shell metaformat --nonInteractive --force &&
+        echo 'Initializing Pulsar cluster metadata...' &&
+        bin/pulsar initialize-cluster-metadata --cluster pulsar-cluster-ha --zookeeper zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181 --configuration-store zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181 --web-service-url http://proxy:8080 --web-service-url-tls https://proxy:8443 --broker-service-url pulsar://proxy:6650 --broker-service-url-tls pulsar+ssl://proxy:6651 &&
+        echo 'Metadata initialization completed successfully' &&
+        touch /tmp/init-completed
+      "
+    depends_on:
+      zookeeper-1:
+        condition: service_healthy
+      zookeeper-2:
+        condition: service_healthy
+      zookeeper-3:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/init-completed"]
+      interval: 5s
+      timeout: 3s
+      retries: 60
+
+  # BookKeeper ensemble - 5 nodes for 2-failure tolerance
+  bookie-1:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: bookie-1
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    environment:
+      - clusterName=pulsar-cluster-ha
+      - zkServers=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - metadataServiceUri=metadata-store:zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - advertisedAddress=bookie-1
+      - BOOKIE_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
+      # Enhanced BookKeeper settings for HA
+      - ensemblePlacementPolicy=org.apache.bookkeeper.client.RackawareEnsemblePlacementPolicy
+      - journalDirectories=/pulsar/data/bookkeeper/journal
+      - ledgerDirectories=/pulsar/data/bookkeeper/ledgers
+      - journalSyncData=true
+      - journalAdaptiveGroupWrites=true
+      - rereplicationEntryBatchSize=100
+    depends_on:
+      pulsar-init:
+        condition: service_healthy
+    volumes:
+      - bookie-1-data:/pulsar/data
+    command: >
+      bash -c "
+        echo 'Waiting for metadata initialization to complete...' &&
+        sleep 20 &&
+        echo 'Starting BookKeeper bookie...' &&
+        bin/apply-config-from-env.py conf/bookkeeper.conf &&
+        bin/bookkeeper bookie
+      "
+    healthcheck:
+      test: ["CMD", "bin/bookkeeper", "shell", "bookiesanity"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  bookie-2:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: bookie-2
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    environment:
+      - clusterName=pulsar-cluster-ha
+      - zkServers=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - metadataServiceUri=metadata-store:zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - advertisedAddress=bookie-2
+      - BOOKIE_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
+      - ensemblePlacementPolicy=org.apache.bookkeeper.client.RackawareEnsemblePlacementPolicy
+      - journalDirectories=/pulsar/data/bookkeeper/journal
+      - ledgerDirectories=/pulsar/data/bookkeeper/ledgers
+      - journalSyncData=true
+      - journalAdaptiveGroupWrites=true
+      - rereplicationEntryBatchSize=100
+    depends_on:
+      pulsar-init:
+        condition: service_healthy
+    volumes:
+      - bookie-2-data:/pulsar/data
+    command: >
+      bash -c "
+        echo 'Waiting for metadata initialization to complete...' &&
+        sleep 20 &&
+        echo 'Starting BookKeeper bookie...' &&
+        bin/apply-config-from-env.py conf/bookkeeper.conf &&
+        bin/bookkeeper bookie
+      "
+    healthcheck:
+      test: ["CMD", "bin/bookkeeper", "shell", "bookiesanity"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  bookie-3:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: bookie-3
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    environment:
+      - clusterName=pulsar-cluster-ha
+      - zkServers=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - metadataServiceUri=metadata-store:zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - advertisedAddress=bookie-3
+      - BOOKIE_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
+      - ensemblePlacementPolicy=org.apache.bookkeeper.client.RackawareEnsemblePlacementPolicy
+      - journalDirectories=/pulsar/data/bookkeeper/journal
+      - ledgerDirectories=/pulsar/data/bookkeeper/ledgers
+      - journalSyncData=true
+      - journalAdaptiveGroupWrites=true
+      - rereplicationEntryBatchSize=100
+    depends_on:
+      pulsar-init:
+        condition: service_healthy
+    volumes:
+      - bookie-3-data:/pulsar/data
+    command: >
+      bash -c "
+        echo 'Waiting for metadata initialization to complete...' &&
+        sleep 20 &&
+        echo 'Starting BookKeeper bookie...' &&
+        bin/apply-config-from-env.py conf/bookkeeper.conf &&
+        bin/bookkeeper bookie
+      "
+    healthcheck:
+      test: ["CMD", "bin/bookkeeper", "shell", "bookiesanity"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  bookie-4:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: bookie-4
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    environment:
+      - clusterName=pulsar-cluster-ha
+      - zkServers=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - metadataServiceUri=metadata-store:zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - advertisedAddress=bookie-4
+      - BOOKIE_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
+      - ensemblePlacementPolicy=org.apache.bookkeeper.client.RackawareEnsemblePlacementPolicy
+      - journalDirectories=/pulsar/data/bookkeeper/journal
+      - ledgerDirectories=/pulsar/data/bookkeeper/ledgers
+      - journalSyncData=true
+      - journalAdaptiveGroupWrites=true
+      - rereplicationEntryBatchSize=100
+    depends_on:
+      pulsar-init:
+        condition: service_healthy
+    volumes:
+      - bookie-4-data:/pulsar/data
+    command: >
+      bash -c "
+        echo 'Waiting for metadata initialization to complete...' &&
+        sleep 20 &&
+        echo 'Starting BookKeeper bookie...' &&
+        bin/apply-config-from-env.py conf/bookkeeper.conf &&
+        bin/bookkeeper bookie
+      "
+    healthcheck:
+      test: ["CMD", "bin/bookkeeper", "shell", "bookiesanity"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  bookie-5:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: bookie-5
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    environment:
+      - clusterName=pulsar-cluster-ha
+      - zkServers=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - metadataServiceUri=metadata-store:zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - advertisedAddress=bookie-5
+      - BOOKIE_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=512m
+      - ensemblePlacementPolicy=org.apache.bookkeeper.client.RackawareEnsemblePlacementPolicy
+      - journalDirectories=/pulsar/data/bookkeeper/journal
+      - ledgerDirectories=/pulsar/data/bookkeeper/ledgers
+      - journalSyncData=true
+      - journalAdaptiveGroupWrites=true
+      - rereplicationEntryBatchSize=100
+    depends_on:
+      pulsar-init:
+        condition: service_healthy
+    volumes:
+      - bookie-5-data:/pulsar/data
+    command: >
+      bash -c "
+        echo 'Waiting for metadata initialization to complete...' &&
+        sleep 20 &&
+        echo 'Starting BookKeeper bookie...' &&
+        bin/apply-config-from-env.py conf/bookkeeper.conf &&
+        bin/bookkeeper bookie
+      "
+    healthcheck:
+      test: ["CMD", "bin/bookkeeper", "shell", "bookiesanity"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Pulsar Brokers - 3 for proper HA
+  broker-1:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: broker-1
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    environment:
+      - metadataStoreUrl=zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - zookeeperServers=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - clusterName=pulsar-cluster-ha
+      - advertisedAddress=broker-1
+      - brokerServicePort=6650
+      - webServicePort=8080
+      # HA BookKeeper settings
+      - managedLedgerDefaultEnsembleSize=5
+      - managedLedgerDefaultWriteQuorum=3
+      - managedLedgerDefaultAckQuorum=2
+      # Advanced load balancing
+      - loadManagerClassName=org.apache.pulsar.broker.loadbalance.extensions.ExtensibleLoadManagerImpl
+      - loadBalancerLoadSheddingStrategy=org.apache.pulsar.broker.loadbalance.impl.OverloadShedder
+      - loadBalancerSheddingEnabled=true
+      - loadBalancerReportUpdateThresholdPercentage=10
+      # HA features
+      - brokerDeduplicationEnabled=true
+      - topicLevelPoliciesEnabled=true
+      - systemTopicEnabled=true
+      - brokerDeleteInactiveTopicsEnabled=false
+      # Replication and failover
+      - replicationConnectionsPerBroker=16
+      - brokerClientAuthenticationPlugin=
+      - brokerClientAuthenticationParameters=
+      - replicationTlsEnabled=false
+      # Performance and reliability
+      - maxMessageSize=5242880
+      - defaultRetentionTimeInMinutes=10080
+      - defaultRetentionSizeInMB=1000
+      - brokerMaxConnections=2000
+      - brokerMaxConnectionsPerIp=100
+      # Monitoring
+      - exposeTopicLevelMetricsInPrometheus=true
+      - exposeConsumerLevelMetricsInPrometheus=true
+      - PULSAR_MEM=-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g
+    depends_on:
+      bookie-1:
+        condition: service_healthy
+      bookie-2:
+        condition: service_healthy
+      bookie-3:
+        condition: service_healthy
+      bookie-4:
+        condition: service_healthy
+      bookie-5:
+        condition: service_healthy
+    ports:
+      - "8080:8080"
+      - "6650:6650"
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/broker.conf &&
+               exec bin/pulsar broker"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/admin/v2/clusters/pulsar-cluster-ha"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  broker-2:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: broker-2
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    environment:
+      - metadataStoreUrl=zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - zookeeperServers=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - clusterName=pulsar-cluster-ha
+      - advertisedAddress=broker-2
+      - brokerServicePort=6650
+      - webServicePort=8080
+      - managedLedgerDefaultEnsembleSize=5
+      - managedLedgerDefaultWriteQuorum=3
+      - managedLedgerDefaultAckQuorum=2
+      - loadManagerClassName=org.apache.pulsar.broker.loadbalance.extensions.ExtensibleLoadManagerImpl
+      - loadBalancerLoadSheddingStrategy=org.apache.pulsar.broker.loadbalance.impl.OverloadShedder
+      - loadBalancerSheddingEnabled=true
+      - loadBalancerReportUpdateThresholdPercentage=10
+      - brokerDeduplicationEnabled=true
+      - topicLevelPoliciesEnabled=true
+      - systemTopicEnabled=true
+      - brokerDeleteInactiveTopicsEnabled=false
+      - replicationConnectionsPerBroker=16
+      - replicationTlsEnabled=false
+      - maxMessageSize=5242880
+      - defaultRetentionTimeInMinutes=10080
+      - defaultRetentionSizeInMB=1000
+      - brokerMaxConnections=2000
+      - brokerMaxConnectionsPerIp=100
+      - exposeTopicLevelMetricsInPrometheus=true
+      - exposeConsumerLevelMetricsInPrometheus=true
+      - PULSAR_MEM=-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g
+    depends_on:
+      bookie-1:
+        condition: service_healthy
+      bookie-2:
+        condition: service_healthy
+      bookie-3:
+        condition: service_healthy
+      bookie-4:
+        condition: service_healthy
+      bookie-5:
+        condition: service_healthy
+    ports:
+      - "8081:8080"
+      - "6651:6650"
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/broker.conf &&
+               exec bin/pulsar broker"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/admin/v2/clusters/pulsar-cluster-ha"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  broker-3:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: broker-3
+    restart: on-failure
+    networks:
+      - pulsar-network
+      - chaos-network
+    environment:
+      - metadataStoreUrl=zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - zookeeperServers=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - clusterName=pulsar-cluster-ha
+      - advertisedAddress=broker-3
+      - brokerServicePort=6650
+      - webServicePort=8080
+      - managedLedgerDefaultEnsembleSize=5
+      - managedLedgerDefaultWriteQuorum=3
+      - managedLedgerDefaultAckQuorum=2
+      - loadManagerClassName=org.apache.pulsar.broker.loadbalance.extensions.ExtensibleLoadManagerImpl
+      - loadBalancerLoadSheddingStrategy=org.apache.pulsar.broker.loadbalance.impl.OverloadShedder
+      - loadBalancerSheddingEnabled=true
+      - loadBalancerReportUpdateThresholdPercentage=10
+      - brokerDeduplicationEnabled=true
+      - topicLevelPoliciesEnabled=true
+      - systemTopicEnabled=true
+      - brokerDeleteInactiveTopicsEnabled=false
+      - replicationConnectionsPerBroker=16
+      - replicationTlsEnabled=false
+      - maxMessageSize=5242880
+      - defaultRetentionTimeInMinutes=10080
+      - defaultRetentionSizeInMB=1000
+      - brokerMaxConnections=2000
+      - brokerMaxConnectionsPerIp=100
+      - exposeTopicLevelMetricsInPrometheus=true
+      - exposeConsumerLevelMetricsInPrometheus=true
+      - PULSAR_MEM=-Xms2g -Xmx2g -XX:MaxDirectMemorySize=2g
+    depends_on:
+      bookie-1:
+        condition: service_healthy
+      bookie-2:
+        condition: service_healthy
+      bookie-3:
+        condition: service_healthy
+      bookie-4:
+        condition: service_healthy
+      bookie-5:
+        condition: service_healthy
+    ports:
+      - "8082:8080"
+      - "6652:6650"
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/broker.conf &&
+               exec bin/pulsar broker"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/admin/v2/clusters/pulsar-cluster-ha"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Pulsar Proxy for client connection resilience
+  proxy:
+    image: apachepulsar/pulsar:3.1.1
+    container_name: proxy
+    restart: on-failure
+    networks:
+      - pulsar-network
+    environment:
+      - metadataStoreUrl=zk:zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - zookeeperServers=zookeeper-1:2181,zookeeper-2:2181,zookeeper-3:2181
+      - clusterName=pulsar-cluster-ha
+      - webServicePort=8080
+      - servicePort=6650
+      - advertisedAddress=proxy
+      - brokerProxyAllowedTargetPorts=6650,6651,6652
+      - proxyLogLevel=INFO
+      - PULSAR_MEM=-Xms1g -Xmx1g -XX:MaxDirectMemorySize=1g
+    depends_on:
+      broker-1:
+        condition: service_healthy
+      broker-2:
+        condition: service_healthy
+      broker-3:
+        condition: service_healthy
+    ports:
+      - "8083:8080"
+      - "6653:6650"
+    command: >
+      bash -c "bin/apply-config-from-env.py conf/proxy.conf &&
+               exec bin/pulsar proxy"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/admin/v2/clusters"]
+      interval: 10s
+      timeout: 5s
+      retries: 30
+
+  # Enhanced monitoring stack
+  prometheus:
+    image: prom/prometheus:v2.47.2
+    container_name: prometheus-ha
+    networks:
+      - pulsar-network
+    ports:
+      - "9090:9090"
+    volumes:
+      - prometheus-data:/prometheus
+      - ../../monitoring/prometheus/prometheus-ha.yml:/etc/prometheus/prometheus.yml:ro
+      - ../../monitoring/prometheus/rules:/etc/prometheus/rules:ro
+    command:
+      - '--config.file=/etc/prometheus/prometheus.yml'
+      - '--storage.tsdb.path=/prometheus'
+      - '--web.console.libraries=/usr/share/prometheus/console_libraries'
+      - '--web.console.templates=/usr/share/prometheus/consoles'
+      - '--storage.tsdb.retention.time=7d'
+      - '--web.enable-lifecycle'
+      - '--web.enable-admin-api'
+    depends_on:
+      - broker-1
+      - broker-2
+      - broker-3
+      - proxy
+
+  grafana:
+    image: grafana/grafana:10.2.0
+    container_name: grafana-ha
+    networks:
+      - pulsar-network
+    ports:
+      - "3000:3000"
+    volumes:
+      - grafana-data:/var/lib/grafana
+      - ../../monitoring/grafana/provisioning:/etc/grafana/provisioning:ro
+      - ../../monitoring/grafana/dashboards:/var/lib/grafana/dashboards:ro
+    environment:
+      - GF_SECURITY_ADMIN_PASSWORD=admin123
+      - GF_USERS_ALLOW_SIGN_UP=false
+      - GF_INSTALL_PLUGINS=grafana-piechart-panel,grafana-clock-panel,grafana-simple-json-datasource
+      - GF_DASHBOARDS_DEFAULT_HOME_DASHBOARD_PATH=/var/lib/grafana/dashboards/pulsar-overview.json
+    depends_on:
+      - prometheus
+
+  # Chaos engineering helper (Pumba for network partitions)
+  pumba:
+    image: gaiaadm/pumba:0.9.0
+    container_name: chaos-pumba
+    networks:
+      - chaos-network
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    command: ["sleep", "infinity"]
+    profiles:
+      - chaos

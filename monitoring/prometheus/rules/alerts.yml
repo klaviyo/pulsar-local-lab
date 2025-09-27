@@ -1,0 +1,208 @@
+groups:
+  - name: pulsar.broker.alerts
+    rules:
+      # Broker availability
+      - alert: PulsarBrokerDown
+        expr: up{job="pulsar-broker"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: broker
+        annotations:
+          summary: "Pulsar broker {{ $labels.instance }} is down"
+          description: "Pulsar broker {{ $labels.instance }} has been down for more than 30 seconds."
+
+      # High message backlog
+      - alert: HighConsumerLag
+        expr: pulsar_broker_subscription_back_log > 10000
+        for: 2m
+        labels:
+          severity: warning
+          component: broker
+        annotations:
+          summary: "High consumer lag detected"
+          description: "Subscription {{ $labels.subscription }} on topic {{ $labels.topic }} has {{ $value }} messages in backlog."
+
+      # High publish latency
+      - alert: HighPublishLatency
+        expr: histogram_quantile(0.95, rate(pulsar_broker_publish_latency_bucket[5m])) > 100
+        for: 2m
+        labels:
+          severity: warning
+          component: broker
+        annotations:
+          summary: "High publish latency"
+          description: "95th percentile publish latency is {{ $value }}ms on {{ $labels.instance }}."
+
+      # Memory usage
+      - alert: BrokerHighMemoryUsage
+        expr: (pulsar_broker_jvm_memory_used_bytes / pulsar_broker_jvm_memory_max_bytes) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: broker
+        annotations:
+          summary: "Broker memory usage high"
+          description: "Broker {{ $labels.instance }} memory usage is {{ $value }}%."
+
+  - name: pulsar.bookkeeper.alerts
+    rules:
+      # BookKeeper availability
+      - alert: BookKeeperDown
+        expr: up{job="bookkeeper"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: bookkeeper
+        annotations:
+          summary: "BookKeeper bookie {{ $labels.instance }} is down"
+          description: "BookKeeper bookie {{ $labels.instance }} has been down for more than 30 seconds."
+
+      # High write latency
+      - alert: BookKeeperHighWriteLatency
+        expr: histogram_quantile(0.95, rate(bookie_BOOKIE_ADD_ENTRY_REQUEST[5m])) > 50
+        for: 2m
+        labels:
+          severity: warning
+          component: bookkeeper
+        annotations:
+          summary: "High BookKeeper write latency"
+          description: "95th percentile write latency is {{ $value }}ms on bookie {{ $labels.instance }}."
+
+      # Disk usage
+      - alert: BookKeeperHighDiskUsage
+        expr: (bookie_storage_size / (bookie_storage_size + bookie_storage_free_size)) * 100 > 85
+        for: 5m
+        labels:
+          severity: warning
+          component: bookkeeper
+        annotations:
+          summary: "BookKeeper disk usage high"
+          description: "Bookie {{ $labels.instance }} disk usage is {{ $value }}%."
+
+      # Too few bookies available
+      - alert: InsufficientBookies
+        expr: count(up{job="bookkeeper"} == 1) < 3
+        for: 1m
+        labels:
+          severity: critical
+          component: bookkeeper
+        annotations:
+          summary: "Insufficient BookKeeper bookies available"
+          description: "Only {{ $value }} bookies are available, minimum 3 required for quorum."
+
+  - name: pulsar.zookeeper.alerts
+    rules:
+      # ZooKeeper availability
+      - alert: ZooKeeperDown
+        expr: up{job="zookeeper"} == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: zookeeper
+        annotations:
+          summary: "ZooKeeper {{ $labels.instance }} is down"
+          description: "ZooKeeper {{ $labels.instance }} has been down for more than 30 seconds."
+
+      # No ZooKeeper leader
+      - alert: NoZooKeeperLeader
+        expr: sum(zookeeper_server_leader) == 0
+        for: 30s
+        labels:
+          severity: critical
+          component: zookeeper
+        annotations:
+          summary: "No ZooKeeper leader elected"
+          description: "ZooKeeper ensemble has no leader elected."
+
+      # ZooKeeper pending requests
+      - alert: ZooKeeperHighPendingRequests
+        expr: zookeeper_outstanding_requests > 100
+        for: 2m
+        labels:
+          severity: warning
+          component: zookeeper
+        annotations:
+          summary: "High ZooKeeper pending requests"
+          description: "ZooKeeper {{ $labels.instance }} has {{ $value }} pending requests."
+
+  - name: pulsar.cluster.alerts
+    rules:
+      # Overall cluster health
+      - alert: PulsarClusterUnhealthy
+        expr: |
+          (count(up{job="pulsar-broker"} == 1) < 1) or
+          (count(up{job="bookkeeper"} == 1) < 3) or
+          (count(up{job="zookeeper"} == 1) < 1)
+        for: 1m
+        labels:
+          severity: critical
+          component: cluster
+        annotations:
+          summary: "Pulsar cluster is unhealthy"
+          description: "Pulsar cluster does not have minimum required components available."
+
+      # High cluster message rate
+      - alert: ClusterHighMessageRate
+        expr: sum(rate(pulsar_broker_in_messages_total[5m])) > 100000
+        for: 5m
+        labels:
+          severity: info
+          component: cluster
+        annotations:
+          summary: "High cluster message rate"
+          description: "Cluster message rate is {{ $value }} msg/sec."
+
+      # Low cluster throughput
+      - alert: ClusterLowThroughput
+        expr: sum(rate(pulsar_broker_in_messages_total[5m])) < 10
+        for: 10m
+        labels:
+          severity: info
+          component: cluster
+        annotations:
+          summary: "Low cluster throughput"
+          description: "Cluster message rate has been below 10 msg/sec for 10 minutes."
+
+  - name: pulsar.upgrade.alerts
+    rules:
+      # Upgrade-specific alerts
+      - alert: UpgradeMessageLoss
+        expr: pulsar:upgrade_msg_loss_rate > 0
+        for: 30s
+        labels:
+          severity: critical
+          component: upgrade
+        annotations:
+          summary: "Message loss detected during upgrade"
+          description: "Messages are being lost during upgrade process: {{ $value }} msg/sec loss rate."
+
+      - alert: UpgradeHighLatency
+        expr: pulsar:upgrade_publish_latency_p99 > 200
+        for: 1m
+        labels:
+          severity: warning
+          component: upgrade
+        annotations:
+          summary: "High latency during upgrade"
+          description: "99th percentile publish latency is {{ $value }}ms during upgrade."
+
+      - alert: UpgradeHighConsumerLag
+        expr: pulsar:upgrade_consumer_lag > 5000
+        for: 2m
+        labels:
+          severity: warning
+          component: upgrade
+        annotations:
+          summary: "High consumer lag during upgrade"
+          description: "Consumer lag increased to {{ $value }} messages during upgrade."
+
+      - alert: UpgradeConnectionStorm
+        expr: rate(pulsar_broker_connection_created_total_count[1m]) > 100
+        for: 1m
+        labels:
+          severity: warning
+          component: upgrade
+        annotations:
+          summary: "High connection creation rate during upgrade"
+          description: "Connection creation rate is {{ $value }} connections/sec during upgrade."

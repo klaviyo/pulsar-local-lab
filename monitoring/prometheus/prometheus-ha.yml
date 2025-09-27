@@ -1,0 +1,227 @@
+global:
+  scrape_interval: 15s
+  evaluation_interval: 15s
+  external_labels:
+    cluster: 'pulsar-ha'
+
+rule_files:
+  - "/etc/prometheus/rules/*.yml"
+
+scrape_configs:
+  # ZooKeeper ensemble metrics
+  - job_name: 'zookeeper'
+    static_configs:
+      - targets:
+          - 'zookeeper-1:8000'
+          - 'zookeeper-2:8000'
+          - 'zookeeper-3:8000'
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+
+  # BookKeeper ensemble metrics (5 bookies)
+  - job_name: 'bookkeeper'
+    static_configs:
+      - targets:
+          - 'bookie-1:8000'
+          - 'bookie-2:8000'
+          - 'bookie-3:8000'
+          - 'bookie-4:8000'
+          - 'bookie-5:8000'
+    metrics_path: '/metrics'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+
+  # Pulsar Broker cluster metrics (3 brokers)
+  - job_name: 'pulsar-broker'
+    static_configs:
+      - targets:
+          - 'broker-1:8080'
+          - 'broker-2:8080'
+          - 'broker-3:8080'
+    metrics_path: '/metrics/'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    params:
+      format: ['prometheus']
+
+  # Pulsar Proxy metrics
+  - job_name: 'pulsar-proxy'
+    static_configs:
+      - targets: ['proxy:8080']
+    metrics_path: '/metrics/'
+    scrape_interval: 15s
+    scrape_timeout: 10s
+    params:
+      format: ['prometheus']
+
+  # Function Worker metrics
+  - job_name: 'pulsar-function-worker'
+    static_configs:
+      - targets:
+          - 'broker-1:8080'
+          - 'broker-2:8080'
+          - 'broker-3:8080'
+    metrics_path: '/metrics/'
+    scrape_interval: 30s
+    scrape_timeout: 10s
+    params:
+      format: ['prometheus']
+
+  # Prometheus self-monitoring
+  - job_name: 'prometheus'
+    static_configs:
+      - targets: ['localhost:9090']
+
+  # Docker container metrics (if cAdvisor is available)
+  - job_name: 'cadvisor'
+    static_configs:
+      - targets: ['cadvisor:8080']
+    metrics_path: '/metrics'
+    scrape_interval: 30s
+    scrape_timeout: 15s
+
+alerting:
+  alertmanagers:
+    - static_configs:
+        - targets: []
+
+# Enhanced recording rules for HA cluster
+recording_rules:
+  - name: pulsar.broker.rules
+    interval: 15s
+    rules:
+      # Broker health and performance
+      - record: pulsar:broker_up
+        expr: up{job="pulsar-broker"}
+
+      - record: pulsar:broker_msg_rate_in
+        expr: sum(rate(pulsar_broker_in_messages_total[5m])) by (cluster, broker, instance)
+
+      - record: pulsar:broker_msg_rate_out
+        expr: sum(rate(pulsar_broker_out_messages_total[5m])) by (cluster, broker, instance)
+
+      - record: pulsar:broker_throughput_in
+        expr: sum(rate(pulsar_broker_in_bytes_total[5m])) by (cluster, broker, instance)
+
+      - record: pulsar:broker_throughput_out
+        expr: sum(rate(pulsar_broker_out_bytes_total[5m])) by (cluster, broker, instance)
+
+      # Load balancing metrics
+      - record: pulsar:broker_load_report_update_rate
+        expr: rate(pulsar_broker_load_report_update[5m])
+
+      - record: pulsar:broker_topics_count
+        expr: pulsar_broker_topics_count
+
+      - record: pulsar:broker_subscriptions_count
+        expr: pulsar_broker_subscriptions_count
+
+  - name: pulsar.bookkeeper.rules
+    interval: 15s
+    rules:
+      # BookKeeper health
+      - record: pulsar:bookie_up
+        expr: up{job="bookkeeper"}
+
+      - record: pulsar:bookie_write_rate
+        expr: sum(rate(bookie_BOOKIE_WRITE_BYTES[5m])) by (instance, bookie)
+
+      - record: pulsar:bookie_read_rate
+        expr: sum(rate(bookie_BOOKIE_READ_BYTES[5m])) by (instance, bookie)
+
+      - record: pulsar:bookie_write_latency_p50
+        expr: histogram_quantile(0.50, rate(bookie_BOOKIE_ADD_ENTRY_REQUEST[5m])) by (instance)
+
+      - record: pulsar:bookie_write_latency_p95
+        expr: histogram_quantile(0.95, rate(bookie_BOOKIE_ADD_ENTRY_REQUEST[5m])) by (instance)
+
+      - record: pulsar:bookie_write_latency_p99
+        expr: histogram_quantile(0.99, rate(bookie_BOOKIE_ADD_ENTRY_REQUEST[5m])) by (instance)
+
+      - record: pulsar:bookie_read_latency_p99
+        expr: histogram_quantile(0.99, rate(bookie_BOOKIE_READ_ENTRY_REQUEST[5m])) by (instance)
+
+      # BookKeeper storage
+      - record: pulsar:bookie_storage_size
+        expr: bookie_storage_size by (instance)
+
+      - record: pulsar:bookie_storage_logical_size
+        expr: bookie_storage_logical_size by (instance)
+
+  - name: pulsar.zookeeper.rules
+    interval: 30s
+    rules:
+      # ZooKeeper health
+      - record: pulsar:zookeeper_up
+        expr: up{job="zookeeper"}
+
+      - record: pulsar:zookeeper_leader
+        expr: zookeeper_server_leader
+
+      - record: pulsar:zookeeper_followers
+        expr: count(zookeeper_server_follower == 1)
+
+      - record: pulsar:zookeeper_pending_syncs
+        expr: zookeeper_pending_syncs
+
+  - name: pulsar.topic.rules
+    interval: 30s
+    rules:
+      # Topic-level aggregations
+      - record: pulsar:topic_msg_rate_in
+        expr: sum(rate(pulsar_broker_in_messages_total[5m])) by (topic, namespace)
+
+      - record: pulsar:topic_msg_rate_out
+        expr: sum(rate(pulsar_broker_out_messages_total[5m])) by (topic, namespace)
+
+      - record: pulsar:topic_throughput_in
+        expr: sum(rate(pulsar_broker_in_bytes_total[5m])) by (topic, namespace)
+
+      - record: pulsar:topic_throughput_out
+        expr: sum(rate(pulsar_broker_out_bytes_total[5m])) by (topic, namespace)
+
+      # Consumer metrics
+      - record: pulsar:consumer_msg_backlog
+        expr: sum(pulsar_broker_subscription_back_log) by (topic, subscription, namespace)
+
+      - record: pulsar:consumer_msg_rate_out
+        expr: sum(rate(pulsar_broker_subscription_msg_rate_out[5m])) by (topic, subscription, namespace)
+
+      - record: pulsar:consumer_msg_throughput_out
+        expr: sum(rate(pulsar_broker_subscription_msg_throughput_out[5m])) by (topic, subscription, namespace)
+
+  - name: pulsar.cluster.rules
+    interval: 30s
+    rules:
+      # Cluster-wide aggregations
+      - record: pulsar:cluster_msg_rate_in
+        expr: sum(pulsar:broker_msg_rate_in)
+
+      - record: pulsar:cluster_msg_rate_out
+        expr: sum(pulsar:broker_msg_rate_out)
+
+      - record: pulsar:cluster_throughput_in
+        expr: sum(pulsar:broker_throughput_in)
+
+      - record: pulsar:cluster_throughput_out
+        expr: sum(pulsar:broker_throughput_out)
+
+      - record: pulsar:cluster_topics_count
+        expr: sum(pulsar:broker_topics_count)
+
+      - record: pulsar:cluster_subscriptions_count
+        expr: sum(pulsar:broker_subscriptions_count)
+
+      - record: pulsar:cluster_storage_size
+        expr: sum(pulsar:bookie_storage_size)
+
+      # Cluster health indicators
+      - record: pulsar:cluster_brokers_up
+        expr: count(pulsar:broker_up == 1)
+
+      - record: pulsar:cluster_bookies_up
+        expr: count(pulsar:bookie_up == 1)
+
+      - record: pulsar:cluster_zookeepers_up
+        expr: count(pulsar:zookeeper_up == 1)
