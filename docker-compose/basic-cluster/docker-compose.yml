@@ -43,6 +43,8 @@ services:
     environment:
       - metadataStoreUrl=zk:zookeeper:2181
       - zkServers=zookeeper:2181
+      - bookiePort=3181
+      - httpServerEnabled=false
     command: >
       bash -c "
         echo 'Waiting for ZooKeeper to be ready...' &&
@@ -74,6 +76,8 @@ services:
     environment:
       - clusterName=pulsar-cluster-1
       - zkServers=zookeeper:2181
+      - bookiePort=3181
+      - httpServerEnabled=false
       - metadataServiceUri=metadata-store:zk:zookeeper:2181
       - advertisedAddress=bookie-1
       - BOOKIE_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
@@ -89,8 +93,12 @@ services:
     command: >
       bash -c "
         echo 'Waiting for metadata initialization to complete...' &&
-        sleep 15 &&
-        echo 'Starting BookKeeper bookie...' &&
+        while ! echo ruok | nc -w 1 zookeeper 2181 | grep -q imok; do
+          echo 'Waiting for ZooKeeper to be ready...'
+          sleep 2
+        done &&
+        sleep 10 &&
+        echo 'ZooKeeper is ready, starting bookie...' &&
         bin/apply-config-from-env.py conf/bookkeeper.conf &&
         bin/bookkeeper bookie
       "
@@ -111,6 +119,8 @@ services:
     environment:
       - clusterName=pulsar-cluster-1
       - zkServers=zookeeper:2181
+      - bookiePort=3181
+      - httpServerEnabled=false
       - metadataServiceUri=metadata-store:zk:zookeeper:2181
       - advertisedAddress=bookie-2
       - BOOKIE_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
@@ -125,8 +135,12 @@ services:
     command: >
       bash -c "
         echo 'Waiting for metadata initialization to complete...' &&
-        sleep 15 &&
-        echo 'Starting BookKeeper bookie...' &&
+        while ! echo ruok | nc -w 1 zookeeper 2181 | grep -q imok; do
+          echo 'Waiting for ZooKeeper to be ready...'
+          sleep 2
+        done &&
+        sleep 10 &&
+        echo 'ZooKeeper is ready, starting bookie...' &&
         bin/apply-config-from-env.py conf/bookkeeper.conf &&
         bin/bookkeeper bookie
       "
@@ -147,6 +161,8 @@ services:
     environment:
       - clusterName=pulsar-cluster-1
       - zkServers=zookeeper:2181
+      - bookiePort=3181
+      - httpServerEnabled=false
       - metadataServiceUri=metadata-store:zk:zookeeper:2181
       - advertisedAddress=bookie-3
       - BOOKIE_MEM=-Xms512m -Xmx512m -XX:MaxDirectMemorySize=256m
@@ -161,8 +177,12 @@ services:
     command: >
       bash -c "
         echo 'Waiting for metadata initialization to complete...' &&
-        sleep 15 &&
-        echo 'Starting BookKeeper bookie...' &&
+        while ! echo ruok | nc -w 1 zookeeper 2181 | grep -q imok; do
+          echo 'Waiting for ZooKeeper to be ready...'
+          sleep 2
+        done &&
+        sleep 10 &&
+        echo 'ZooKeeper is ready, starting bookie...' &&
         bin/apply-config-from-env.py conf/bookkeeper.conf &&
         bin/bookkeeper bookie
       "

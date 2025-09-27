@@ -7,7 +7,10 @@
       "Bash(docker-compose:*)",
       "Bash(docker exec:*)",
       "Bash(./start-cluster.sh:*)",
-      "Bash(curl:*)"
+      "Bash(curl:*)",
+      "WebSearch",
+      "Bash(timeout:*)",
+      "Bash(nc:*)"
     ],
     "deny": [],
     "ask": []
