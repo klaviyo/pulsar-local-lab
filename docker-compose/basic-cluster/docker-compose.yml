@@ -29,7 +29,7 @@ services:
     ports:
       - "2181:2181"
     healthcheck:
-      test: ["CMD", "bin/pulsar", "zookeeper-shell", "-server", "zookeeper:2181", "ls", "/"]
+      test: ["CMD", "bin/pulsar-zookeeper-ruok.sh"]
       interval: 10s
       timeout: 5s
       retries: 30
@@ -40,32 +40,10 @@ services:
     container_name: pulsar-init
     networks:
       - pulsar-network
-    environment:
-      - metadataStoreUrl=zk:zookeeper:2181
-      - zkServers=zookeeper:2181
-      - bookiePort=3181
-      - httpServerEnabled=false
-    command: >
-      bash -c "
-        echo 'Waiting for ZooKeeper to be ready...' &&
-        sleep 15 &&
-        echo 'Initializing BookKeeper metadata...' &&
-        bin/apply-config-from-env.py conf/bookkeeper.conf &&
-        bin/bookkeeper shell metaformat --nonInteractive --force &&
-        echo 'BookKeeper metadata initialization completed' &&
-        echo 'Initializing Pulsar cluster metadata...' &&
-        bin/pulsar initialize-cluster-metadata --cluster pulsar-cluster-1 --zookeeper zookeeper:2181 --configuration-store zookeeper:2181 --web-service-url http://localhost:8080 --broker-service-url pulsar://localhost:6650 &&
-        echo 'Metadata initialization completed successfully' &&
-        touch /tmp/init-completed
-      "
+    command: bash -c "bin/pulsar initialize-cluster-metadata --cluster pulsar-cluster-1 --zookeeper zookeeper:2181 --configuration-store zookeeper:2181 --web-service-url http://broker-1:8080 --broker-service-url pulsar://broker-1:6650"
     depends_on:
       zookeeper:
         condition: service_healthy
-    healthcheck:
-      test: ["CMD", "test", "-f", "/tmp/init-completed"]
-      interval: 5s
-      timeout: 3s
-      retries: 60
 
   bookie-1:
     image: apachepulsar/pulsar:3.1.1
@@ -88,20 +66,11 @@ services:
     depends_on:
       zookeeper:
         condition: service_healthy
+      pulsar-init:
+        condition: service_completed_successfully
     volumes:
       - bookie-1-data:/pulsar/data
-    command: >
-      bash -c "
-        echo 'Waiting for metadata initialization to complete...' &&
-        while ! echo ruok | nc -w 1 zookeeper 2181 | grep -q imok; do
-          echo 'Waiting for ZooKeeper to be ready...'
-          sleep 2
-        done &&
-        sleep 10 &&
-        echo 'ZooKeeper is ready, starting bookie...' &&
-        bin/apply-config-from-env.py conf/bookkeeper.conf &&
-        bin/bookkeeper bookie
-      "
+    command: bash -c "bin/apply-config-from-env.py conf/bookkeeper.conf && exec bin/pulsar bookie"
     ports:
       - "3181:3181"
     healthcheck:
@@ -130,20 +99,11 @@ services:
     depends_on:
       zookeeper:
         condition: service_healthy
+      pulsar-init:
+        condition: service_completed_successfully
     volumes:
       - bookie-2-data:/pulsar/data
-    command: >
-      bash -c "
-        echo 'Waiting for metadata initialization to complete...' &&
-        while ! echo ruok | nc -w 1 zookeeper 2181 | grep -q imok; do
-          echo 'Waiting for ZooKeeper to be ready...'
-          sleep 2
-        done &&
-        sleep 10 &&
-        echo 'ZooKeeper is ready, starting bookie...' &&
-        bin/apply-config-from-env.py conf/bookkeeper.conf &&
-        bin/bookkeeper bookie
-      "
+    command: bash -c "bin/apply-config-from-env.py conf/bookkeeper.conf && exec bin/pulsar bookie"
     ports:
       - "3182:3181"
     healthcheck:
@@ -172,20 +132,11 @@ services:
     depends_on:
       zookeeper:
         condition: service_healthy
+      pulsar-init:
+        condition: service_completed_successfully
     volumes:
       - bookie-3-data:/pulsar/data
-    command: >
-      bash -c "
-        echo 'Waiting for metadata initialization to complete...' &&
-        while ! echo ruok | nc -w 1 zookeeper 2181 | grep -q imok; do
-          echo 'Waiting for ZooKeeper to be ready...'
-          sleep 2
-        done &&
-        sleep 10 &&
-        echo 'ZooKeeper is ready, starting bookie...' &&
-        bin/apply-config-from-env.py conf/bookkeeper.conf &&
-        bin/bookkeeper bookie
-      "
+    command: bash -c "bin/apply-config-from-env.py conf/bookkeeper.conf && exec bin/pulsar bookie"
     ports:
       - "3183:3181"
     healthcheck:
@@ -228,12 +179,14 @@ services:
     depends_on:
       zookeeper:
         condition: service_healthy
+      pulsar-init:
+        condition: service_completed_successfully
       bookie-1:
-        condition: service_healthy
+        condition: service_started
       bookie-2:
-        condition: service_healthy
+        condition: service_started
       bookie-3:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "8080:8080"
       - "6650:6650"
@@ -280,12 +233,14 @@ services:
     depends_on:
       zookeeper:
         condition: service_healthy
+      pulsar-init:
+        condition: service_completed_successfully
       bookie-1:
-        condition: service_healthy
+        condition: service_started
       bookie-2:
-        condition: service_healthy
+        condition: service_started
       bookie-3:
-        condition: service_healthy
+        condition: service_started
     ports:
       - "8081:8080"
       - "6651:6650"
