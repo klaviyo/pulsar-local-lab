@@ -1,0 +1,73 @@
+2025-09-29T01:47:47,801+0000 [main] INFO  org.apache.pulsar.testclient.PerformanceProducer - JVM args [-Djava.net.preferIPv4Stack=true, -Dorg.xerial.snappy.use.systemlib=true, -Dlog4j.configurationFile=log4j2.yaml, -Dio.netty.tryReflectionSetAccessible=true, -Dorg.apache.pulsar.shade.io.netty.tryReflectionSetAccessible=true, --add-opens=java.base/sun.net=ALL-UNNAMED, --add-opens=java.base/java.lang=ALL-UNNAMED, --add-opens=java.base/java.util.zip=ALL-UNNAMED, --add-opens=java.base/java.nio=ALL-UNNAMED, --add-opens=java.base/jdk.internal.misc=ALL-UNNAMED, -Dpulsar.allocator.exit_on_oom=true, -Dio.netty.recycler.maxCapacityPerThread=4096, -Dpulsar.log.appender=Console, -Dpulsar.log.immediateFlush=false, -Dpulsar.log.dir=/pulsar/logs, -Dpulsar.log.file=pulsar-perftest.log]
+2025-09-29T01:47:47,820+0000 [main] INFO  org.apache.pulsar.testclient.PerformanceProducer - Netty max memory (PlatformDependent.maxDirectMemory()) 7 GB
+2025-09-29T01:47:47,820+0000 [main] INFO  org.apache.pulsar.testclient.PerformanceProducer - JVM max heap memory (Runtime.getRuntime().maxMemory()) 7 GB
+2025-09-29T01:47:47,833+0000 [main] INFO  org.apache.pulsar.testclient.PerformanceProducer - Starting Pulsar perf producer with config: {
+  "serviceURL" : "pulsar://localhost:6650",
+  "authPluginClassName" : "",
+  "authParams" : "",
+  "sslfactoryPlugin" : null,
+  "sslFactoryPluginParams" : null,
+  "tlsTrustCertsFilePath" : "",
+  "tlsAllowInsecureConnection" : false,
+  "tlsHostnameVerificationEnable" : false,
+  "maxConnections" : 1,
+  "statsIntervalSeconds" : 0,
+  "ioThreads" : 1,
+  "enableBusyWait" : false,
+  "listenerName" : null,
+  "listenerThreads" : 1,
+  "maxLookupRequest" : 50000,
+  "deprecatedAuthPluginClassName" : null,
+  "memoryLimit" : 0,
+  "topics" : [ "persistent://public/default/quick-test" ],
+  "numTopics" : 1,
+  "numTestThreads" : 1,
+  "msgRate" : 1000,
+  "msgSize" : 512,
+  "numProducers" : 1,
+  "separator" : "-",
+  "sendTimeout" : 0,
+  "producerName" : "quick-producer",
+  "adminURL" : "http://localhost:8080/",
+  "maxOutstanding" : 1000,
+  "maxPendingMessagesAcrossPartitions" : 0,
+  "partitions" : null,
+  "numMessages" : 0,
+  "compression" : "NONE",
+  "payloadFilename" : null,
+  "payloadDelimiter" : "\\n",
+  "batchTimeMillis" : 100.0,
+  "disableBatching" : false,
+  "batchMaxMessages" : 1000,
+  "batchMaxBytes" : 4194304,
+  "testTime" : 10,
+  "warmupTimeSeconds" : 1.0,
+  "encKeyName" : null,
+  "encKeyFile" : null,
+  "delay" : 0,
+  "delayRange" : null,
+  "setEventTime" : false,
+  "exitOnFailure" : false,
+  "messageKeyGenerationMode" : null,
+  "producerAccessMode" : "Shared",
+  "formatPayload" : false,
+  "formatterClass" : "org.apache.pulsar.testclient.DefaultMessageFormatter",
+  "transactionTimeout" : 10,
+  "numMessagesPerTransaction" : 50,
+  "isEnableTransaction" : false,
+  "isAbortTransaction" : false,
+  "histogramFile" : null
+}
+2025-09-29T01:47:47,834+0000 [pulsar-perf-producer-exec-1-1] INFO  org.apache.pulsar.testclient.PerformanceProducer - Started performance test thread 0
+2025-09-29T01:47:47,965+0000 [pulsar-perf-producer-exec-1-1] INFO  org.apache.pulsar.testclient.PerformanceProducer - Adding 1 publishers on topic persistent://public/default/quick-test
+2025-09-29T01:47:48,004+0000 [pulsar-client-io-2-1] INFO  org.apache.pulsar.client.impl.ConnectionPool - [[id: 0x7aab8121, L:/127.0.0.1:52838 - R:localhost/127.0.0.1:6650]] Connected to server
+2025-09-29T01:47:48,021+0000 [pulsar-client-io-2-1] INFO  org.apache.pulsar.client.impl.ConnectionPool - [[id: 0x840a43e2, L:/127.0.0.1:52844 - R:127.0.0.1/127.0.0.1:6650]] Connected to server
+2025-09-29T01:47:48,022+0000 [pulsar-client-io-2-1] INFO  org.apache.pulsar.client.impl.ProducerImpl - [persistent://public/default/quick-test] [quick-producer-0] Creating producer on cnx [id: 0x840a43e2, L:/127.0.0.1:52844 - R:127.0.0.1/127.0.0.1:6650]
+2025-09-29T01:47:48,025+0000 [pulsar-client-io-2-1] INFO  org.apache.pulsar.client.impl.ProducerImpl - [persistent://public/default/quick-test] [quick-producer-0] Created producer on cnx [id: 0x840a43e2, L:/127.0.0.1:52844 - R:127.0.0.1/127.0.0.1:6650]
+2025-09-29T01:47:48,026+0000 [pulsar-perf-producer-exec-1-1] INFO  org.apache.pulsar.testclient.PerformanceProducer - Created 1 producers
+2025-09-29T01:47:57,868+0000 [main] INFO  org.apache.pulsar.testclient.PerformanceProducer - Throughput produced:    9743 msg ---    973.8 msg/s ---      3.8 Mbit/s  --- failure      0.0 msg/s --- Latency: mean:  56.601 ms - med:  56.648 - 95pct: 102.191 - 99pct: 106.617 - 99.9pct: 109.541 - 99.99pct: 110.756 - Max: 111.744
+2025-09-29T01:47:58,028+0000 [pulsar-perf-producer-exec-1-1] INFO  org.apache.pulsar.testclient.PerformanceProducer - ------------- DONE (reached the maximum duration: [10 seconds] of production) --------------
+2025-09-29T01:47:58,029+0000 [pulsar-perf-producer-exec-1-1] INFO  org.apache.pulsar.client.impl.PulsarClientImpl - Client closing. URL: pulsar://localhost:6650
+2025-09-29T01:47:58,037+0000 [pulsar-client-io-2-1] INFO  org.apache.pulsar.client.impl.ProducerImpl - [persistent://public/default/quick-test] [quick-producer-0] Closed Producer
+2025-09-29T01:47:58,042+0000 [pulsar-client-io-2-1] INFO  org.apache.pulsar.client.impl.ClientCnx - [id: 0x7aab8121, L:/127.0.0.1:52838 ! R:localhost/127.0.0.1:6650] Disconnected
+2025-09-29T01:47:58,045+0000 [pulsar-client-io-2-1] INFO  org.apache.pulsar.client.impl.ClientCnx - [id: 0x840a43e2, L:/127.0.0.1:52844 ! R:127.0.0.1/127.0.0.1:6650] Disconnected

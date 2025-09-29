@@ -15,7 +15,11 @@
       "Bash(WARMUP_MESSAGES=10 BASELINE_MESSAGES=20 timeout 30s ./baseline-test.sh)",
       "Bash(WARMUP_MESSAGES=10 BASELINE_MESSAGES=20 timeout 30s test-scripts/performance/baseline-test.sh)",
       "Bash(env WARMUP_MESSAGES=10 BASELINE_MESSAGES=20 timeout 30s test-scripts/performance/baseline-test.sh)",
-      "Bash(env WARMUP_MESSAGES=10 BASELINE_MESSAGES=20 timeout 30s ./baseline-test.sh)"
+      "Bash(env WARMUP_MESSAGES=10 BASELINE_MESSAGES=20 timeout 30s ./baseline-test.sh)",
+      "Bash(find:*)",
+      "Bash(awk:*)",
+      "Bash(env WARMUP_MESSAGES=50 BASELINE_MESSAGES=100 timeout 60s ./baseline-test.sh)",
+      "Bash(./test-parallel.sh)"
     ],
     "deny": [],
     "ask": []

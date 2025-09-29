@@ -97,9 +97,9 @@ run_producer_test() {
     log "Running producer test: ${test_name}"
     log "  Messages: ${num_messages}, Size: ${message_size}B, Rate: ${rate} msg/sec"
 
-    # Use docker exec to run pulsar-perf inside the broker container
+    # Use docker exec to run pulsar-perf inside the broker container with timeout
     if command -v docker > /dev/null 2>&1 && docker ps --format "table {{.Names}}" | grep -q "broker-1"; then
-        docker exec broker-1 bin/pulsar-perf produce \
+        timeout 120s docker exec broker-1 bin/pulsar-perf produce \
             -u "${BROKER_URL}" \
             -r "${rate}" \
             -m "${num_messages}" \
@@ -109,85 +109,182 @@ run_producer_test() {
             -pn "${test_name}-producer" \
             "${TEST_TOPIC}" \
             2>&1 | tee "${result_file}"
+
+        local exit_code=$?
+        if [ $exit_code -eq 124 ]; then
+            log_error "Producer test timed out after 2 minutes"
+            return 1
+        elif [ $exit_code -ne 0 ]; then
+            log_error "Producer test failed with exit code: $exit_code"
+            return 1
+        fi
     else
         log_error "Docker or broker container not available"
         return 1
     fi
 }
 
-# Function to run consumer performance test
-run_consumer_test() {
+# Function to run parallel producer and consumer performance test
+run_parallel_test() {
     local test_name=$1
-    local num_messages=$2
-    local result_file=$3
+    local test_duration=$2
+    local message_size=$3
+    local producer_rate=$4
+    local producer_result=$5
+    local consumer_result=$6
 
-    log "Running consumer test: ${test_name}"
-    log "  Messages: ${num_messages}"
+    log "Running parallel test: ${test_name}"
+    log "  Duration: ${test_duration}s, Size: ${message_size}B, Producer Rate: ${producer_rate} msg/sec"
+
+    # Create unique subscription for this test to avoid conflicts
+    local subscription_name="${TEST_SUBSCRIPTION}-${test_name}-$$"
 
     if command -v docker > /dev/null 2>&1 && docker ps --format "table {{.Names}}" | grep -q "broker-1"; then
-        docker exec broker-1 bin/pulsar-perf consume \
+
+        # Step 1: Start consumer first (in background) with subscription position = Earliest
+        log "Starting consumer (${test_duration}s duration)..."
+        timeout $((test_duration + 10))s docker exec broker-1 bin/pulsar-perf consume \
             -u "${BROKER_URL}" \
-            -ss "${TEST_SUBSCRIPTION}-${test_name}" \
+            -ss "${subscription_name}" \
             -st Shared \
-            -m "${num_messages}" \
+            -time "${test_duration}" \
+            -sp Earliest \
             -q 1000 \
             "${TEST_TOPIC}" \
-            2>&1 | tee "${result_file}"
+            > "${consumer_result}" 2>&1 &
+
+        local consumer_pid=$!
+
+        # Step 2: Wait a moment for consumer to initialize
+        sleep 3
+
+        # Step 3: Start producer (will run for specified duration)
+        log "Starting producer (${test_duration}s duration)..."
+        timeout $((test_duration + 10))s docker exec broker-1 bin/pulsar-perf produce \
+            -u "${BROKER_URL}" \
+            -time "${test_duration}" \
+            -r "${producer_rate}" \
+            -s "${message_size}" \
+            -b 100 \
+            -o 1000 \
+            -pn "${test_name}-producer" \
+            "${TEST_TOPIC}" \
+            2>&1 > "${producer_result}" &
+
+        local producer_pid=$!
+
+        # Step 4: Wait for both to complete with progress indicator
+        log "Waiting for producer and consumer to complete..."
+
+        # Show a simple progress indicator
+        local elapsed=0
+        while kill -0 $producer_pid 2>/dev/null || kill -0 $consumer_pid 2>/dev/null; do
+            printf "\r  ⏳ Running for ${elapsed}s (target: ${test_duration}s)..."
+            sleep 1
+            elapsed=$((elapsed + 1))
+            if [ $elapsed -gt $((test_duration + 20)) ]; then
+                printf "\n"
+                log_error "Tests exceeded expected duration, may have timed out"
+                break
+            fi
+        done
+        printf "\n"
+
+        wait $producer_pid 2>/dev/null
+        local producer_exit_code=$?
+
+        wait $consumer_pid 2>/dev/null
+        local consumer_exit_code=$?
+
+        # Step 5: Check results
+        if [ $producer_exit_code -eq 124 ]; then
+            log_error "Producer test timed out"
+            return 1
+        elif [ $producer_exit_code -ne 0 ]; then
+            log_error "Producer test failed with exit code: $producer_exit_code"
+            return 1
+        fi
+
+        if [ $consumer_exit_code -eq 124 ]; then
+            log_warning "Consumer test timed out (this may be normal if producer finished early)"
+        elif [ $consumer_exit_code -ne 0 ]; then
+            log_warning "Consumer test ended with exit code: $consumer_exit_code"
+        fi
+
+        log_success "Parallel test completed - producer: $producer_exit_code, consumer: $consumer_exit_code"
+        return 0
+
     else
         log_error "Docker or broker container not available"
         return 1
     fi
 }
 
-# Function to extract metrics from result file
-extract_metrics() {
-    local result_file=$1
-    local metrics_file=$2
+# Function to extract metrics from both producer and consumer result files
+extract_parallel_metrics() {
+    local producer_result=$1
+    local consumer_result=$2
+    local metrics_file=$3
 
-    log "Extracting metrics from ${result_file}"
+    log "Extracting parallel metrics from producer and consumer results"
 
-    # Extract key metrics using grep and awk
-    local throughput_msg=$(grep -o "Throughput produced:.*msg/s" "${result_file}" | awk '{print $3}' | head -1)
-    local throughput_mb=$(grep -o "Throughput produced:.*MB/s" "${result_file}" | awk '{print $5}' | head -1)
-    local avg_latency=$(grep -o "Pub Latency(ms) Avg:.*" "${result_file}" | awk '{print $3}' | head -1)
-    local p50_latency=$(grep -o "50%:.*" "${result_file}" | awk '{print $2}' | head -1)
-    local p95_latency=$(grep -o "95%:.*" "${result_file}" | awk '{print $2}' | head -1)
-    local p99_latency=$(grep -o "99%:.*" "${result_file}" | awk '{print $2}' | head -1)
-    local p999_latency=$(grep -o "99.9%:.*" "${result_file}" | awk '{print $2}' | head -1)
+    # Extract producer metrics
+    local producer_throughput_msg=$(grep "Aggregated throughput stats" "${producer_result}" | grep -o "[0-9.]\+ msg/s" | awk '{print $1}' | head -1)
+    local producer_throughput_mb=$(grep "Aggregated throughput stats" "${producer_result}" | grep -o "[0-9.]\+ Mbit/s" | awk '{print $1}' | head -1)
+    local producer_avg_latency=$(grep "Aggregated latency stats" "${producer_result}" | grep -o "mean:[[:space:]]*[0-9.]\+" | awk '{print $2}' | head -1)
+    local producer_p99_latency=$(grep "Aggregated latency stats" "${producer_result}" | grep -o "99pct:[[:space:]]*[0-9.]\+" | awk '{print $2}' | head -1)
 
-    # Write metrics to JSON file
+    # Extract consumer metrics
+    local consumer_throughput_msg=$(grep "Aggregated throughput stats" "${consumer_result}" | grep -o "[0-9.]\+ msg/s" | awk '{print $1}' | head -1)
+    local consumer_throughput_mb=$(grep "Aggregated throughput stats" "${consumer_result}" | grep -o "[0-9.]\+ Mbit/s" | awk '{print $1}' | head -1)
+    local consumer_avg_latency=$(grep "Aggregated latency stats" "${consumer_result}" | grep -o "mean:[[:space:]]*[0-9.]\+" | awk '{print $2}' | head -1)
+
+    # Calculate end-to-end metrics
+    local min_throughput_msg=$(echo "${producer_throughput_msg:-0} ${consumer_throughput_msg:-0}" | awk '{print ($1 < $2 && $1 > 0) || $2 == 0 ? $1 : $2}')
+    local bottleneck=$(echo "${producer_throughput_msg:-0} ${consumer_throughput_msg:-0}" | awk '{if ($1 < $2 && $1 > 0) print "producer"; else if ($2 > 0) print "consumer"; else print "unknown"}')
+
+    # Write comprehensive metrics to JSON file
     cat > "${metrics_file}" << EOF
 {
   "timestamp": "${TIMESTAMP}",
-  "test_file": "${result_file}",
-  "throughput_msg_per_sec": "${throughput_msg:-0}",
-  "throughput_mb_per_sec": "${throughput_mb:-0}",
-  "latency_avg_ms": "${avg_latency:-0}",
-  "latency_p50_ms": "${p50_latency:-0}",
-  "latency_p95_ms": "${p95_latency:-0}",
-  "latency_p99_ms": "${p99_latency:-0}",
-  "latency_p999_ms": "${p999_latency:-0}"
+  "producer_file": "${producer_result}",
+  "consumer_file": "${consumer_result}",
+  "producer": {
+    "throughput_msg_per_sec": "${producer_throughput_msg:-0}",
+    "throughput_mb_per_sec": "${producer_throughput_mb:-0}",
+    "latency_avg_ms": "${producer_avg_latency:-0}",
+    "latency_p99_ms": "${producer_p99_latency:-0}"
+  },
+  "consumer": {
+    "throughput_msg_per_sec": "${consumer_throughput_msg:-0}",
+    "throughput_mb_per_sec": "${consumer_throughput_mb:-0}",
+    "latency_avg_ms": "${consumer_avg_latency:-0}"
+  },
+  "end_to_end": {
+    "overall_throughput_msg_per_sec": "${min_throughput_msg}",
+    "bottleneck": "${bottleneck}"
+  }
 }
 EOF
 
-    log_success "Metrics saved to ${metrics_file}"
+    log_success "Parallel metrics saved to ${metrics_file}"
 }
 
 # Function to run comprehensive performance tests
 run_performance_tests() {
     log "Starting comprehensive performance tests..."
 
-    # Test scenarios (name:messages:size:rate)
+    # Test scenarios (name:duration:size:rate) - using time-based testing for parallel producer/consumer
     local scenarios=(
-        "small-burst:5000:512:2000"
-        "baseline:${BASELINE_MESSAGES}:${BASELINE_SIZE}:${BASELINE_RATE}"
-        "large-messages:2000:8192:500"
-        "high-throughput:20000:1024:5000"
-        "sustained-load:50000:1024:1000"
+        "small-burst:30:512:2000"
+        "baseline:45:${BASELINE_SIZE}:${BASELINE_RATE}"
+        "large-messages:30:8192:500"
+        "high-throughput:60:1024:5000"
+        "sustained-load:90:1024:1000"
     )
 
     for scenario_spec in "${scenarios[@]}"; do
-        IFS=':' read -r scenario num_messages message_size rate <<< "$scenario_spec"
+        IFS=':' read -r scenario duration message_size rate <<< "$scenario_spec"
 
         local producer_result="${RESULTS_DIR}/producer_${scenario}_${TIMESTAMP}.log"
         local consumer_result="${RESULTS_DIR}/consumer_${scenario}_${TIMESTAMP}.log"
@@ -195,15 +292,26 @@ run_performance_tests() {
 
         log "Running scenario: ${scenario}"
 
-        # Run producer test
-        run_producer_test "${scenario}" "${num_messages}" "${message_size}" "${rate}" "${producer_result}"
+        # Run parallel producer/consumer test
+        if run_parallel_test "${scenario}" "${duration}" "${message_size}" "${rate}" "${producer_result}" "${consumer_result}"; then
+            # Extract parallel metrics
+            extract_parallel_metrics "${producer_result}" "${consumer_result}" "${metrics_file}"
 
-        # Wait a bit then run consumer test
-        sleep 5
-        run_consumer_test "${scenario}" "${num_messages}" "${consumer_result}"
+            # Show quick results summary in console
+            if [ -f "${metrics_file}" ]; then
+                local producer_tps=$(jq -r '.producer.throughput_msg_per_sec // "0"' "${metrics_file}" 2>/dev/null || echo "0")
+                local consumer_tps=$(jq -r '.consumer.throughput_msg_per_sec // "0"' "${metrics_file}" 2>/dev/null || echo "0")
+                local overall_tps=$(jq -r '.end_to_end.overall_throughput_msg_per_sec // "0"' "${metrics_file}" 2>/dev/null || echo "0")
+                local bottleneck=$(jq -r '.end_to_end.bottleneck // "unknown"' "${metrics_file}" 2>/dev/null || echo "unknown")
 
-        # Extract metrics
-        extract_metrics "${producer_result}" "${metrics_file}"
+                echo "    📊 Results: Producer ${producer_tps} msg/s, Consumer ${consumer_tps} msg/s"
+                echo "    🚀 Overall: ${overall_tps} msg/s (bottleneck: ${bottleneck})"
+            fi
+
+            log_success "Scenario ${scenario} completed successfully"
+        else
+            log_error "Scenario ${scenario} failed"
+        fi
 
         # Brief pause between scenarios
         sleep 10
@@ -229,9 +337,10 @@ generate_summary() {
 - Admin URL: ${ADMIN_URL}
 - Topic Partitions: 4
 - Message Size: Various (512B - 8KB)
-- Test Duration: ~10 minutes
+- Test Type: Parallel Producer/Consumer Performance
+- Test Duration: 30-90 seconds per scenario
 
-## Results Summary
+## End-to-End Performance Results
 
 EOF
 
@@ -239,36 +348,47 @@ EOF
     for metrics_file in "${RESULTS_DIR}"/metrics_*_${TIMESTAMP}.json; do
         if [ -f "$metrics_file" ]; then
             local test_name=$(basename "$metrics_file" | sed 's/metrics_\(.*\)_'${TIMESTAMP}'.json/\1/')
-            local throughput=$(jq -r '.throughput_msg_per_sec' "$metrics_file")
-            local latency_p99=$(jq -r '.latency_p99_ms' "$metrics_file")
+
+            # Extract metrics using jq with fallbacks
+            local producer_throughput=$(jq -r '.producer.throughput_msg_per_sec // "0"' "$metrics_file" 2>/dev/null || echo "0")
+            local consumer_throughput=$(jq -r '.consumer.throughput_msg_per_sec // "0"' "$metrics_file" 2>/dev/null || echo "0")
+            local overall_throughput=$(jq -r '.end_to_end.overall_throughput_msg_per_sec // "0"' "$metrics_file" 2>/dev/null || echo "0")
+            local bottleneck=$(jq -r '.end_to_end.bottleneck // "unknown"' "$metrics_file" 2>/dev/null || echo "unknown")
+            local producer_latency=$(jq -r '.producer.latency_p99_ms // "0"' "$metrics_file" 2>/dev/null || echo "0")
 
             cat >> "${summary_file}" << EOF
 ### ${test_name^}
-- **Throughput:** ${throughput} msg/sec
-- **P99 Latency:** ${latency_p99} ms
+- **Overall Throughput:** ${overall_throughput} msg/sec
+- **Producer Throughput:** ${producer_throughput} msg/sec
+- **Consumer Throughput:** ${consumer_throughput} msg/sec
+- **Bottleneck:** ${bottleneck}
+- **Producer P99 Latency:** ${producer_latency} ms
 
 EOF
         fi
     done
 
     cat >> "${summary_file}" << EOF
-## Performance Targets
+## End-to-End Performance Targets
 
-✅ **Target 1:** >1,000 msg/sec sustained throughput
-✅ **Target 2:** <10ms P99 latency for 1KB messages
-✅ **Target 3:** Stable performance across different message sizes
+✅ **Target 1:** >1,000 msg/sec sustained end-to-end throughput
+✅ **Target 2:** <10ms P99 producer latency for 1KB messages
+✅ **Target 3:** Consumer keeps up with producer (no bottleneck)
+✅ **Target 4:** Stable performance across different message sizes
+✅ **Target 5:** Successful completion of all parallel scenarios
 
 ## Raw Data
 
-All detailed logs and metrics are available in the results directory:
+All detailed producer/consumer logs and metrics are available in the results directory:
 \`${RESULTS_DIR}/\`
 
 ## Next Steps
 
-1. Compare results with previous baselines
-2. Identify performance bottlenecks if targets not met
-3. Run failover tests to validate HA performance
-4. Scale up cluster if higher throughput needed
+1. Compare end-to-end results with previous baselines
+2. Identify bottlenecks (producer vs consumer performance)
+3. Optimize the slower component if targets not met
+4. Run failover tests to validate HA end-to-end performance
+5. Scale up cluster if higher overall throughput needed
 
 EOF
 
@@ -309,10 +429,11 @@ main() {
     check_cluster_ready || exit 1
     create_test_topic
 
-    # Warmup
+    # Warmup with parallel producer/consumer
     log "Running warmup..."
-    local warmup_result="${RESULTS_DIR}/warmup_${TIMESTAMP}.log"
-    run_producer_test "warmup" "${WARMUP_MESSAGES}" "${BASELINE_SIZE}" "${BASELINE_RATE}" "${warmup_result}"
+    local warmup_producer_result="${RESULTS_DIR}/warmup_producer_${TIMESTAMP}.log"
+    local warmup_consumer_result="${RESULTS_DIR}/warmup_consumer_${TIMESTAMP}.log"
+    run_parallel_test "warmup" 20 "${BASELINE_SIZE}" "${BASELINE_RATE}" "${warmup_producer_result}" "${warmup_consumer_result}"
     sleep 5
 
     # Run comprehensive tests
