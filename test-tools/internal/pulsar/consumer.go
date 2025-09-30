@@ -160,7 +160,7 @@ func (cc *ConsumerClient) connect(ctx context.Context) error {
 	cc.connected = true
 	cc.lastError = nil
 
-	log.Printf("Consumer %s connected to topic: %s (subscription: %s)", cc.consumerID, cc.pulsarCfg.Topic, cc.consumerCfg.SubscriptionName)
+	// Suppressed: log.Printf("Consumer %s connected to topic: %s (subscription: %s)", cc.consumerID, cc.pulsarCfg.Topic, cc.consumerCfg.SubscriptionName)
 	return nil
 }
 
@@ -396,7 +396,7 @@ func (cc *ConsumerClient) Close() error {
 		cc.client.Close()
 	}
 
-	log.Printf("Consumer %s closed for topic: %s", cc.consumerID, cc.pulsarCfg.Topic)
+	// Suppressed: log.Printf("Consumer %s closed for topic: %s", cc.consumerID, cc.pulsarCfg.Topic)
 	return nil
 }
 

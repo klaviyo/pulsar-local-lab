@@ -26,8 +26,8 @@ If you're running Pulsar in Minikube, use port-forwarding to access it from your
 # Forward Pulsar broker port (run in separate terminal and keep running)
 kubectl port-forward svc/pulsar-proxy 6650:6650
 
-# Forward admin API port (optional, for management)
-kubectl port-forward svc/pulsar-proxy 8080:8080
+# Forward admin API port (optional, for management - maps service port 80 to localhost:8080)
+kubectl port-forward svc/pulsar-proxy 8080:80
 ```
 
 **Important**: Keep the port-forward command running in a separate terminal window.

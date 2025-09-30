@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"sync"
+	"time"
 
 	"github.com/pulsar-local-lab/perf-test/internal/config"
 	"github.com/pulsar-local-lab/perf-test/internal/metrics"
@@ -90,8 +91,9 @@ func (p *Pool) Start(ctx context.Context) error {
 		go func(w Worker) {
 			defer p.wg.Done()
 			if err := w.Start(ctx); err != nil {
-				// Log error but don't stop other workers
-				fmt.Printf("Worker %d error: %v\n", w.ID(), err)
+				// Silently handle error - logging to stdout breaks the TUI
+				// In production, would log to file or structured logger
+				_ = err
 			}
 		}(worker)
 	}
@@ -117,8 +119,20 @@ func (p *Pool) Stop() error {
 		}
 	}
 
-	// Wait for all workers to finish
-	p.wg.Wait()
+	// Wait for all workers to finish with timeout
+	done := make(chan struct{})
+	go func() {
+		p.wg.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// All workers stopped successfully
+	case <-time.After(10 * time.Second):
+		// Timeout - workers taking too long to stop
+		return fmt.Errorf("timeout waiting for workers to stop")
+	}
 
 	if len(errs) > 0 {
 		return fmt.Errorf("errors stopping workers: %v", errs)
@@ -141,5 +155,63 @@ func (p *Pool) IsRunning() bool {
 
 // WorkerCount returns the number of workers
 func (p *Pool) WorkerCount() int {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
 	return len(p.workers)
+}
+
+// AddWorker adds a new worker to the pool dynamically
+func (p *Pool) AddWorker(ctx context.Context, workerFactory func(int) (Worker, error)) error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	workerID := len(p.workers)
+	worker, err := workerFactory(workerID)
+	if err != nil {
+		return fmt.Errorf("failed to create worker %d: %w", workerID, err)
+	}
+
+	p.workers = append(p.workers, worker)
+
+	// Start the worker if pool is running
+	if p.running {
+		p.wg.Add(1)
+		go func(w Worker) {
+			defer p.wg.Done()
+			if err := w.Start(ctx); err != nil {
+				// Silently handle error - logging to stdout breaks the TUI
+				_ = err
+			}
+		}(worker)
+	}
+
+	return nil
+}
+
+// RemoveWorker removes the last worker from the pool
+func (p *Pool) RemoveWorker() error {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+
+	if len(p.workers) == 0 {
+		return fmt.Errorf("no workers to remove")
+	}
+
+	// Don't allow removing the last worker
+	if len(p.workers) == 1 {
+		return fmt.Errorf("cannot remove last worker")
+	}
+
+	// Get the last worker
+	lastWorker := p.workers[len(p.workers)-1]
+
+	// Stop the worker
+	if err := lastWorker.Stop(); err != nil {
+		return fmt.Errorf("failed to stop worker: %w", err)
+	}
+
+	// Remove from slice
+	p.workers = p.workers[:len(p.workers)-1]
+
+	return nil
 }

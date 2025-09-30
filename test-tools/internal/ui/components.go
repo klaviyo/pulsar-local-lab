@@ -522,3 +522,119 @@ func minFloat64(a, b float64) float64 {
 func maxFloat64(a, b float64) float64 {
 	return math.Max(a, b)
 }
+
+// ControlMenuItem represents a controllable parameter
+type ControlMenuItem struct {
+	Label       string
+	Value       string
+	Adjustable  bool
+	Action      func(delta int) // Called when left/right arrow pressed
+	ToggleFunc  func()           // Called when Enter/Space pressed (for buttons)
+	MinValue    int
+	MaxValue    int
+	CurrentValue int
+}
+
+// ControlMenu displays an interactive control menu
+type ControlMenu struct {
+	*tview.TextView
+	items         []*ControlMenuItem
+	selectedIndex int
+}
+
+// NewControlMenu creates a new control menu
+func NewControlMenu(title string) *ControlMenu {
+	tv := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(false)
+
+	tv.SetBorder(true).
+		SetTitle(fmt.Sprintf(" %s ", title)).
+		SetBorderColor(ColorBorder).
+		SetTitleColor(ColorHeader)
+
+	return &ControlMenu{
+		TextView:      tv,
+		items:         make([]*ControlMenuItem, 0),
+		selectedIndex: 0,
+	}
+}
+
+// AddItem adds a menu item
+func (cm *ControlMenu) AddItem(item *ControlMenuItem) {
+	cm.items = append(cm.items, item)
+}
+
+// MoveSelection moves the selection up or down
+func (cm *ControlMenu) MoveSelection(delta int) {
+	if len(cm.items) == 0 {
+		return
+	}
+	cm.selectedIndex += delta
+	if cm.selectedIndex < 0 {
+		cm.selectedIndex = len(cm.items) - 1
+	}
+	if cm.selectedIndex >= len(cm.items) {
+		cm.selectedIndex = 0
+	}
+}
+
+// AdjustValue adjusts the currently selected item's value
+func (cm *ControlMenu) AdjustValue(delta int) {
+	if len(cm.items) == 0 || cm.selectedIndex >= len(cm.items) {
+		return
+	}
+	item := cm.items[cm.selectedIndex]
+	if item.Adjustable && item.Action != nil {
+		item.Action(delta)
+	}
+}
+
+// ActivateSelected activates the currently selected item (for buttons)
+func (cm *ControlMenu) ActivateSelected() {
+	if len(cm.items) == 0 || cm.selectedIndex >= len(cm.items) {
+		return
+	}
+	item := cm.items[cm.selectedIndex]
+	if item.ToggleFunc != nil {
+		item.ToggleFunc()
+	}
+}
+
+// Render renders the control menu
+func (cm *ControlMenu) Render() {
+	cm.Clear()
+
+	if len(cm.items) == 0 {
+		fmt.Fprintf(cm, "\n  [%s]No controls available[-]", colorName(ColorLabel))
+		return
+	}
+
+	fmt.Fprintf(cm, "[%s]┌─ CONTROLS ─────────────────────────┐[-]\n", colorName(ColorHeader))
+	fmt.Fprintf(cm, " [%s]Use ↑↓ to navigate, ←→ to adjust[-]\n\n", colorName(ColorLabel))
+
+	for i, item := range cm.items {
+		prefix := "  "
+		suffix := ""
+		labelColor := colorName(ColorLabel)
+
+		if i == cm.selectedIndex {
+			prefix = "[black:cyan] ▶ "
+			suffix = " [-:-]"
+			labelColor = "black"
+		}
+
+		if item.Adjustable {
+			fmt.Fprintf(cm, "%s[%s]%s:[-] [%s]◀ %s ▶[-]%s\n",
+				prefix, labelColor, item.Label, colorName(ColorGood), item.Value, suffix)
+		} else if item.ToggleFunc != nil {
+			// Button style
+			fmt.Fprintf(cm, "%s[%s][%s %s][-]%s\n",
+				prefix, colorName(ColorHighlight), item.Label, item.Value, suffix)
+		} else {
+			// Display only
+			fmt.Fprintf(cm, "%s[%s]%s:[-] [%s]%s[-]%s\n",
+				prefix, labelColor, item.Label, colorName(ColorGood), item.Value, suffix)
+		}
+	}
+}

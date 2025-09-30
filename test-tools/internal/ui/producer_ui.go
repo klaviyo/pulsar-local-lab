@@ -20,16 +20,19 @@ type ProducerUI struct {
 	metricsPanel *MetricsPanel
 	graphWidget  *GraphWidget
 	configPanel  *ConfigPanel
+	controlMenu  *ControlMenu
 	statusBar    *StatusBar
 	helpModal    *HelpModal
 	mainLayout   *tview.Flex
 	showingHelp  bool
+	config       *config.Config
 }
 
 // NewProducerUI creates a new producer UI
 func NewProducerUI(ctx context.Context, pool *worker.Pool) *ProducerUI {
-	targetRate := float64(pool.GetMetrics().GetSnapshot().MessagesSent) // Will update later
-	if cfg := getConfigFromPool(pool); cfg != nil {
+	cfg := getConfigFromPool(pool)
+	targetRate := float64(0)
+	if cfg != nil {
 		targetRate = float64(cfg.Performance.TargetThroughput)
 	}
 
@@ -39,17 +42,19 @@ func NewProducerUI(ctx context.Context, pool *worker.Pool) *ProducerUI {
 	// Create UI components
 	metricsPanel := NewMetricsPanel("METRICS", targetRate)
 	graphWidget := NewGraphWidget("THROUGHPUT", 60, targetRate)
-	configPanel := NewConfigPanel(getConfigFromPool(pool), "CONFIGURATION")
+	configPanel := NewConfigPanel(cfg, "CONFIGURATION")
 	statusBar := NewStatusBar()
+	controlMenu := NewControlMenu("CONTROLS")
 
 	// Create help modal
 	shortcuts := map[string]string{
-		"Q / Ctrl+C": "Quit application",
-		"P":          "Pause/Resume workers",
-		"R":          "Reset metrics",
-		"+":          "Increase workers",
-		"-":          "Decrease workers",
-		"H / ?":      "Show/hide help",
+		"Q / Ctrl+C":    "Quit application",
+		"↑/↓ Arrows":    "Navigate controls",
+		"←/→ Arrows":    "Adjust values",
+		"Enter/Space":   "Activate button",
+		"P":             "Pause/Resume",
+		"R":             "Reset metrics",
+		"H / ?":         "Show/hide help",
 	}
 	helpModal := NewHelpModal(shortcuts)
 
@@ -61,13 +66,53 @@ func NewProducerUI(ctx context.Context, pool *worker.Pool) *ProducerUI {
 		metricsPanel: metricsPanel,
 		graphWidget:  graphWidget,
 		configPanel:  configPanel,
+		controlMenu:  controlMenu,
 		statusBar:    statusBar,
 		helpModal:    helpModal,
 		showingHelp:  false,
+		config:       cfg,
 	}
 
+	ui.setupControlMenu()
 	ui.buildLayout()
 	return ui
+}
+
+// setupControlMenu configures the control menu items
+func (ui *ProducerUI) setupControlMenu() {
+	// Workers control
+	ui.controlMenu.AddItem(&ControlMenuItem{
+		Label:      "Workers",
+		Value:      fmt.Sprintf("%d", ui.pool.WorkerCount()),
+		Adjustable: true,
+		Action: func(delta int) {
+			if delta > 0 {
+				ui.addWorker()
+			} else {
+				ui.removeWorker()
+			}
+		},
+	})
+
+	// Pause/Resume button
+	ui.controlMenu.AddItem(&ControlMenuItem{
+		Label:      "Pause/Resume",
+		Value:      "",
+		Adjustable: false,
+		ToggleFunc: func() {
+			ui.togglePause()
+		},
+	})
+
+	// Reset metrics button
+	ui.controlMenu.AddItem(&ControlMenuItem{
+		Label:      "Reset Metrics",
+		Value:      "",
+		Adjustable: false,
+		ToggleFunc: func() {
+			ui.resetMetrics()
+		},
+	})
 }
 
 // buildLayout constructs the UI layout
@@ -79,7 +124,7 @@ func (ui *ProducerUI) buildLayout() {
 		SetText("[cyan::b]█▓▒░ PULSAR PRODUCER PERFORMANCE TEST ░▒▓█[-:-:-]")
 
 	// Connection info
-	cfg := getConfigFromPool(ui.pool)
+	cfg := ui.config
 	connInfo := tview.NewTextView().
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
@@ -92,13 +137,18 @@ func (ui *ProducerUI) buildLayout() {
 		AddItem(ui.metricsPanel, 0, 1, false).
 		AddItem(ui.graphWidget, 0, 2, false)
 
-	// Main content area
-	mainContent := tview.NewFlex().SetDirection(tview.FlexRow).
+	// Right content area (metrics, graph, config)
+	rightContent := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 1, 0, false).
 		AddItem(connInfo, 1, 0, false).
 		AddItem(tview.NewBox().SetBorder(false), 1, 0, false). // Spacer
 		AddItem(topSection, 0, 4, false).
 		AddItem(ui.configPanel, 12, 0, false)
+
+	// Main content with control menu on left
+	mainContent := tview.NewFlex().
+		AddItem(ui.controlMenu, 40, 0, false).
+		AddItem(rightContent, 0, 1, false)
 
 	// Main layout with status bar at bottom
 	ui.mainLayout = tview.NewFlex().SetDirection(tview.FlexRow).
@@ -120,15 +170,34 @@ func (ui *ProducerUI) handleInput(event *tcell.EventKey) *tcell.EventKey {
 		return event
 	}
 
+	// Handle key events
 	switch event.Key() {
-	case tcell.KeyCtrlC:
+	case tcell.KeyCtrlC, tcell.KeyEscape:
 		ui.shutdown()
 		return nil
-	case tcell.KeyEscape:
-		ui.shutdown()
+	case tcell.KeyUp:
+		ui.controlMenu.MoveSelection(-1)
+		ui.updateControlMenu()
+		return nil
+	case tcell.KeyDown:
+		ui.controlMenu.MoveSelection(1)
+		ui.updateControlMenu()
+		return nil
+	case tcell.KeyLeft:
+		ui.controlMenu.AdjustValue(-1)
+		ui.updateControlMenu()
+		return nil
+	case tcell.KeyRight:
+		ui.controlMenu.AdjustValue(1)
+		ui.updateControlMenu()
+		return nil
+	case tcell.KeyEnter:
+		ui.controlMenu.ActivateSelected()
+		ui.updateControlMenu()
 		return nil
 	}
 
+	// Handle rune events
 	switch event.Rune() {
 	case 'q', 'Q':
 		ui.shutdown()
@@ -139,11 +208,9 @@ func (ui *ProducerUI) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	case 'r', 'R':
 		ui.resetMetrics()
 		return nil
-	case '+', '=':
-		ui.adjustWorkers(1)
-		return nil
-	case '-', '_':
-		ui.adjustWorkers(-1)
+	case ' ': // Space bar
+		ui.controlMenu.ActivateSelected()
+		ui.updateControlMenu()
 		return nil
 	case 'h', 'H', '?':
 		ui.showHelp()
@@ -168,11 +235,33 @@ func (ui *ProducerUI) resetMetrics() {
 	ui.graphWidget.dataPoints = ui.graphWidget.dataPoints[:0]
 }
 
-// adjustWorkers adjusts the worker count (placeholder - would need pool support)
-func (ui *ProducerUI) adjustWorkers(delta int) {
-	// This would require adding AddWorkers/RemoveWorkers to the pool
-	// For now, this is a placeholder showing the UI interaction
-	_ = delta
+// addWorker adds a new worker to the pool
+func (ui *ProducerUI) addWorker() {
+	err := ui.pool.AddWorker(ui.ctx, func(id int) (worker.Worker, error) {
+		return worker.NewProducerWorker(id, ui.config, ui.pool.GetMetrics())
+	})
+	if err != nil {
+		// Silently handle error - can't log during TUI
+		_ = err
+	}
+}
+
+// removeWorker removes a worker from the pool
+func (ui *ProducerUI) removeWorker() {
+	err := ui.pool.RemoveWorker()
+	if err != nil {
+		// Silently handle error - can't log during TUI
+		_ = err
+	}
+}
+
+// updateControlMenu updates the control menu display
+func (ui *ProducerUI) updateControlMenu() {
+	// Update values in menu items
+	if len(ui.controlMenu.items) > 0 {
+		ui.controlMenu.items[0].Value = fmt.Sprintf("%d", ui.pool.WorkerCount())
+	}
+	ui.controlMenu.Render()
 }
 
 // showHelp displays the help modal

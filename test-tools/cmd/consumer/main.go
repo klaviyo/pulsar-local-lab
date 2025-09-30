@@ -56,16 +56,14 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Initialize logger
-	log.SetPrefix("[consumer] ")
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
-
-	log.Printf("Starting %s v%s", appName, appVersion)
+	// Disable all logging to prevent terminal corruption with TUI
+	log.SetOutput(os.NewFile(0, os.DevNull))
 
 	// Load configuration
 	cfg, err := loadConfiguration()
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Apply CLI overrides
@@ -73,16 +71,9 @@ func main() {
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
-		log.Fatalf("Invalid configuration: %v", err)
+		fmt.Fprintf(os.Stderr, "Invalid configuration: %v\n", err)
+		os.Exit(1)
 	}
-
-	log.Printf("Configuration loaded successfully")
-	log.Printf("  Service URL: %s", cfg.Pulsar.ServiceURL)
-	log.Printf("  Topic: %s", cfg.Pulsar.Topic)
-	log.Printf("  Subscription: %s (%s)", cfg.Consumer.SubscriptionName, cfg.Consumer.SubscriptionType)
-	log.Printf("  Workers: %d", cfg.Consumer.NumConsumers)
-	log.Printf("  Receiver Queue Size: %d", cfg.Consumer.ReceiverQueueSize)
-	log.Printf("  Ack Timeout: %v", cfg.Consumer.AckTimeout)
 
 	// Create context with cancellation
 	ctx, cancel := context.WithCancel(context.Background())
@@ -92,45 +83,27 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		sig := <-sigChan
-		log.Printf("Received signal %v, initiating graceful shutdown...", sig)
+		<-sigChan
 		cancel()
 	}()
 
 	// Initialize consumer worker pool
-	log.Printf("Initializing consumer pool with %d workers...", cfg.Consumer.NumConsumers)
 	pool, err := worker.NewConsumerPool(ctx, cfg)
 	if err != nil {
 		log.Fatalf("Failed to create consumer pool: %v", err)
 	}
 
-	log.Printf("Consumer pool initialized successfully")
-
 	// Start the interactive UI (blocks until quit)
-	log.Printf("Starting interactive UI...")
-	if err := ui.RunConsumerUI(ctx, pool); err != nil {
-		log.Printf("UI terminated: %v", err)
-	}
+	// Note: All logging disabled during TUI mode to prevent terminal corruption
+	_ = ui.RunConsumerUI(ctx, pool)
 
-	// Graceful shutdown
-	log.Printf("Shutting down consumer pool...")
-	if err := pool.Stop(); err != nil {
-		log.Printf("Error stopping pool: %v", err)
-	}
+	// Graceful shutdown (silent - TUI has been stopped)
+	_ = pool.Stop()
 
 	// Export metrics if enabled
 	if cfg.Metrics.ExportEnabled {
-		if err := exportMetrics(pool, cfg); err != nil {
-			log.Printf("Failed to export metrics: %v", err)
-		} else {
-			log.Printf("Metrics exported to %s", cfg.Metrics.ExportPath)
-		}
+		_ = exportMetrics(pool, cfg)
 	}
-
-	// Print final statistics
-	printFinalStats(pool)
-
-	log.Printf("Shutdown complete")
 }
 
 // loadConfiguration loads configuration from file or uses profile

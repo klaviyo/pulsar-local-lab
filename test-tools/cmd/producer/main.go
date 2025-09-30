@@ -54,16 +54,14 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Initialize logger
-	log.SetPrefix("[producer] ")
-	log.SetFlags(log.Ldate | log.Ltime | log.Lmicroseconds)
-
-	log.Printf("Starting %s v%s", appName, appVersion)
+	// Disable all logging to prevent terminal corruption with TUI
+	log.SetOutput(os.NewFile(0, os.DevNull))
 
 	// Load configuration
 	cfg, err := loadConfiguration()
 	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to load configuration: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Apply CLI overrides
@@ -71,20 +69,8 @@ func main() {
 
 	// Validate configuration
 	if err := cfg.Validate(); err != nil {
-		log.Fatalf("Invalid configuration: %v", err)
-	}
-
-	log.Printf("Configuration loaded successfully")
-	log.Printf("  Service URL: %s", cfg.Pulsar.ServiceURL)
-	log.Printf("  Topic: %s", cfg.Pulsar.Topic)
-	log.Printf("  Workers: %d", cfg.Producer.NumProducers)
-	log.Printf("  Message Size: %d bytes", cfg.Producer.MessageSize)
-	log.Printf("  Batching: %v (max: %d)", cfg.Producer.BatchingEnabled, cfg.Producer.BatchingMaxSize)
-	log.Printf("  Compression: %s", cfg.Producer.CompressionType)
-	if cfg.Performance.RateLimitEnabled {
-		log.Printf("  Target Rate: %d msg/s", cfg.Performance.TargetThroughput)
-	} else {
-		log.Printf("  Target Rate: unlimited")
+		fmt.Fprintf(os.Stderr, "Invalid configuration: %v\n", err)
+		os.Exit(1)
 	}
 
 	// Create context with cancellation
@@ -95,45 +81,27 @@ func main() {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, os.Interrupt, syscall.SIGTERM)
 	go func() {
-		sig := <-sigChan
-		log.Printf("Received signal %v, initiating graceful shutdown...", sig)
+		<-sigChan
 		cancel()
 	}()
 
 	// Initialize producer worker pool
-	log.Printf("Initializing producer pool with %d workers...", cfg.Producer.NumProducers)
 	pool, err := worker.NewProducerPool(ctx, cfg)
 	if err != nil {
 		log.Fatalf("Failed to create producer pool: %v", err)
 	}
 
-	log.Printf("Producer pool initialized successfully")
-
 	// Start the interactive UI (blocks until quit)
-	log.Printf("Starting interactive UI...")
-	if err := ui.RunProducerUI(ctx, pool); err != nil {
-		log.Printf("UI terminated: %v", err)
-	}
+	// Note: All logging disabled during TUI mode to prevent terminal corruption
+	_ = ui.RunProducerUI(ctx, pool)
 
-	// Graceful shutdown
-	log.Printf("Shutting down producer pool...")
-	if err := pool.Stop(); err != nil {
-		log.Printf("Error stopping pool: %v", err)
-	}
+	// Graceful shutdown (silent - TUI has been stopped)
+	_ = pool.Stop()
 
 	// Export metrics if enabled
 	if cfg.Metrics.ExportEnabled {
-		if err := exportMetrics(pool, cfg); err != nil {
-			log.Printf("Failed to export metrics: %v", err)
-		} else {
-			log.Printf("Metrics exported to %s", cfg.Metrics.ExportPath)
-		}
+		_ = exportMetrics(pool, cfg)
 	}
-
-	// Print final statistics
-	printFinalStats(pool)
-
-	log.Printf("Shutdown complete")
 }
 
 // loadConfiguration loads configuration from file or uses profile

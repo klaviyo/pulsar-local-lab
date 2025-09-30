@@ -35,7 +35,8 @@
       "Bash(/tmp/producer-test:*)",
       "Bash(/tmp/consumer-test:*)",
       "Bash(make:*)",
-      "Bash(./bin/producer:*)"
+      "Bash(./bin/producer:*)",
+      "Bash(kubectl get:*)"
     ],
     "deny": [],
     "ask": []

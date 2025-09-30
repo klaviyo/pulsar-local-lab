@@ -56,8 +56,8 @@ func (cw *ConsumerWorker) Start(ctx context.Context) error {
 			return nil
 		}
 
-		// Receive message with timeout
-		receiveCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+		// Receive message with shorter timeout for faster shutdown response
+		receiveCtx, cancel := context.WithTimeout(ctx, 1*time.Second)
 		msg, err := cw.client.Receive(receiveCtx)
 		cancel()
 
