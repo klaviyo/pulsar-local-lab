@@ -18,6 +18,26 @@ Go-based performance testing tools with interactive terminal UIs for Apache Puls
 - Apache Pulsar cluster (local or remote)
 - Terminal with ANSI color support
 
+## Connecting to Pulsar in Minikube
+
+If you're running Pulsar in Minikube, use port-forwarding to access it from your local machine:
+
+```bash
+# Forward Pulsar broker port (run in separate terminal and keep running)
+kubectl port-forward svc/pulsar-proxy 6650:6650
+
+# Forward admin API port (optional, for management)
+kubectl port-forward svc/pulsar-proxy 8080:8080
+```
+
+**Important**: Keep the port-forward command running in a separate terminal window.
+
+Then connect using localhost:
+```bash
+./bin/producer --service-url pulsar://localhost:6650
+./bin/consumer --service-url pulsar://localhost:6650
+```
+
 ## Installation
 
 ### Clone the repository
