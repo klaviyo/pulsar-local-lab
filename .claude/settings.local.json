@@ -21,7 +21,21 @@
       "Bash(env WARMUP_MESSAGES=50 BASELINE_MESSAGES=100 timeout 60s ./baseline-test.sh)",
       "Bash(./test-parallel.sh)",
       "Bash(tree:*)",
-      "Bash(pip3 list:*)"
+      "Bash(pip3 list:*)",
+      "Bash(go mod init:*)",
+      "Bash(go build:*)",
+      "Bash(go vet:*)",
+      "Bash(go test:*)",
+      "Bash(gofmt:*)",
+      "Bash(go tool cover:*)",
+      "Bash(go mod:*)",
+      "Bash(go doc:*)",
+      "Bash(go list:*)",
+      "Read(//Users/fabian.haupt/go/pkg/mod/github.com/apache/pulsar-client-go@v0.12.1/pulsar/**)",
+      "Bash(/tmp/producer-test:*)",
+      "Bash(/tmp/consumer-test:*)",
+      "Bash(make:*)",
+      "Bash(./bin/producer:*)"
     ],
     "deny": [],
     "ask": []

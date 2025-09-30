@@ -1,0 +1,35 @@
+{
+  "pulsar": {
+    "service_url": "pulsar://localhost:6650",
+    "admin_url": "http://localhost:8080",
+    "topic": "persistent://public/default/perf-test"
+  },
+  "producer": {
+    "num_producers": 5,
+    "message_size": 1024,
+    "batching_enabled": true,
+    "batching_max_size": 1000,
+    "compression_type": "LZ4",
+    "send_timeout": "30s",
+    "max_pending_messages": 1000
+  },
+  "consumer": {
+    "num_consumers": 5,
+    "subscription_name": "perf-test-sub",
+    "subscription_type": "Shared",
+    "receiver_queue_size": 1000,
+    "ack_timeout": "30s"
+  },
+  "performance": {
+    "target_throughput": 10000,
+    "duration": "5m",
+    "warmup": "5s",
+    "rate_limit_enabled": true
+  },
+  "metrics": {
+    "collection_interval": "1s",
+    "histogram_buckets": [1, 5, 10, 25, 50, 100, 250, 500, 1000, 2500, 5000],
+    "export_enabled": true,
+    "export_path": "./metrics"
+  }
+}

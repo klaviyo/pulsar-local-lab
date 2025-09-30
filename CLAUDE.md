@@ -66,23 +66,34 @@ Invoke the `@agent-design-review` subagent for thorough design validation when:
 ## Project Overview
 
 ### Purpose
-Local testing environment for Apache Pulsar with Kubernetes (Minikube).
+Local testing environment for Apache Pulsar with Kubernetes (Minikube) and comprehensive performance testing tools.
 
 ### Current Status
-- **Phase**: Early development
-- **Completed**: Monitoring infrastructure (Prometheus + 6 Grafana dashboards), Minikube Helm values
+- **Phase**: Test tools complete, infrastructure operational
+- **Completed**:
+  - Monitoring infrastructure (Prometheus + 6 Grafana dashboards)
+  - Minikube Helm values
+  - Performance testing tools (producer + consumer in Go)
 
 ### Technology Stack
 - **Orchestration**: Kubernetes (Minikube)
 - **Message Broker**: Apache Pulsar
 - **Monitoring**: Prometheus + Grafana
+- **Testing Tools**: Go 1.25.1+ with pulsar-client-go, tview terminal UI
 
 ### Key Files
 - `helm/values-minikube.yaml` - Kubernetes deployment configuration
 - `monitoring/` - Observability configurations (Prometheus + Grafana)
+- `test-tools/` - Go-based performance testing tools
+  - `test-tools/cmd/producer/` - Producer CLI application
+  - `test-tools/cmd/consumer/` - Consumer CLI application
+  - `test-tools/internal/` - Core implementation (config, metrics, workers, UI)
+  - `test-tools/pkg/ratelimit/` - Reusable rate limiter
 - `CLAUDE-*.md` - Memory bank system files (exclude from commits)
 
 ### Quick Commands
+
+#### Infrastructure
 ```bash
 # Deploy to Minikube
 helm install pulsar apache/pulsar -f helm/values-minikube.yaml
@@ -91,7 +102,30 @@ helm install pulsar apache/pulsar -f helm/values-minikube.yaml
 kubectl port-forward svc/grafana 3000:3000
 ```
 
+#### Test Tools
+```bash
+# Build test tools
+cd test-tools && make build
+
+# Run producer with default profile
+./bin/producer
+
+# Run consumer with high-throughput profile
+./bin/consumer -profile high-throughput
+
+# Run with custom config
+./bin/producer -profile sustained -config myconfig.json
+
+# Run tests
+make test
+
+# Run benchmarks
+make bench
+```
+
 ### Development Guidelines
 1. Optimize for learning and experimentation
 2. Document architectural decisions in CLAUDE-decisions.md
 3. Update memory bank files when making significant changes
+4. Test tools use lock-free concurrency patterns for high performance
+5. Use performance profiles for common testing scenarios
