@@ -215,3 +215,36 @@ func (p *Pool) RemoveWorker() error {
 
 	return nil
 }
+
+// GetConfig returns the current configuration
+func (p *Pool) GetConfig() *config.Config {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.config
+}
+
+// UpdateTargetRate updates the target throughput rate
+func (p *Pool) UpdateTargetRate(rate int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.config.Performance.TargetThroughput = rate
+	if rate > 0 {
+		p.config.Performance.RateLimitEnabled = true
+	} else {
+		p.config.Performance.RateLimitEnabled = false
+	}
+}
+
+// UpdateBatchSize updates the batching max size
+func (p *Pool) UpdateBatchSize(size int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.config.Producer.BatchingMaxSize = size
+}
+
+// UpdateCompression updates the compression type
+func (p *Pool) UpdateCompression(compressionType string) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.config.Producer.CompressionType = compressionType
+}

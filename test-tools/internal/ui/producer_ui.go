@@ -23,8 +23,11 @@ type ProducerUI struct {
 	controlMenu  *ControlMenu
 	statusBar    *StatusBar
 	helpModal    *HelpModal
+	logWindow    *LogWindow
+	logBuffer    *LogBuffer
 	mainLayout   *tview.Flex
 	showingHelp  bool
+	showingLogs  bool
 	config       *config.Config
 }
 
@@ -54,6 +57,8 @@ func NewProducerUI(ctx context.Context, pool *worker.Pool) *ProducerUI {
 		"Enter/Space":   "Activate button",
 		"P":             "Pause/Resume",
 		"R":             "Reset metrics",
+		"L":             "Show/hide logs",
+		"C":             "Clear logs (when visible)",
 		"H / ?":         "Show/hide help",
 	}
 	helpModal := NewHelpModal(shortcuts)
@@ -80,6 +85,8 @@ func NewProducerUI(ctx context.Context, pool *worker.Pool) *ProducerUI {
 
 // setupControlMenu configures the control menu items
 func (ui *ProducerUI) setupControlMenu() {
+	cfg := ui.pool.GetConfig()
+
 	// Workers control
 	ui.controlMenu.AddItem(&ControlMenuItem{
 		Label:      "Workers",
@@ -91,6 +98,36 @@ func (ui *ProducerUI) setupControlMenu() {
 			} else {
 				ui.removeWorker()
 			}
+		},
+	})
+
+	// Target Rate control (msg/s, 0 = unlimited)
+	ui.controlMenu.AddItem(&ControlMenuItem{
+		Label:      "Target Rate",
+		Value:      formatTargetRate(cfg.Performance.TargetThroughput),
+		Adjustable: true,
+		Action: func(delta int) {
+			ui.adjustTargetRate(delta)
+		},
+	})
+
+	// Batch Size control
+	ui.controlMenu.AddItem(&ControlMenuItem{
+		Label:      "Batch Size",
+		Value:      fmt.Sprintf("%d", cfg.Producer.BatchingMaxSize),
+		Adjustable: true,
+		Action: func(delta int) {
+			ui.adjustBatchSize(delta)
+		},
+	})
+
+	// Compression Type control (cycle through options)
+	ui.controlMenu.AddItem(&ControlMenuItem{
+		Label:      "Compression",
+		Value:      cfg.Producer.CompressionType,
+		Adjustable: true,
+		Action: func(delta int) {
+			ui.adjustCompression(delta)
 		},
 	})
 
@@ -208,6 +245,14 @@ func (ui *ProducerUI) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	case 'r', 'R':
 		ui.resetMetrics()
 		return nil
+	case 'l', 'L':
+		ui.toggleLogs()
+		return nil
+	case 'c', 'C':
+		if ui.showingLogs {
+			ui.logBuffer.Clear()
+		}
+		return nil
 	case ' ': // Space bar
 		ui.controlMenu.ActivateSelected()
 		ui.updateControlMenu()
@@ -257,11 +302,100 @@ func (ui *ProducerUI) removeWorker() {
 
 // updateControlMenu updates the control menu display
 func (ui *ProducerUI) updateControlMenu() {
+	cfg := ui.pool.GetConfig()
+
 	// Update values in menu items
-	if len(ui.controlMenu.items) > 0 {
+	if len(ui.controlMenu.items) >= 4 {
 		ui.controlMenu.items[0].Value = fmt.Sprintf("%d", ui.pool.WorkerCount())
+		ui.controlMenu.items[1].Value = formatTargetRate(cfg.Performance.TargetThroughput)
+		ui.controlMenu.items[2].Value = fmt.Sprintf("%d", cfg.Producer.BatchingMaxSize)
+		ui.controlMenu.items[3].Value = cfg.Producer.CompressionType
 	}
 	ui.controlMenu.Render()
+}
+
+// adjustTargetRate adjusts the target message rate
+func (ui *ProducerUI) adjustTargetRate(delta int) {
+	cfg := ui.pool.GetConfig()
+	current := cfg.Performance.TargetThroughput
+
+	// Adjust in increments based on current value
+	var increment int
+	if current == 0 {
+		increment = 100 // Start at 100 if currently unlimited
+	} else if current < 1000 {
+		increment = 100
+	} else if current < 10000 {
+		increment = 1000
+	} else {
+		increment = 5000
+	}
+
+	newRate := current + (delta * increment)
+	if newRate < 0 {
+		newRate = 0 // 0 = unlimited
+	}
+
+	ui.pool.UpdateTargetRate(newRate)
+}
+
+// adjustBatchSize adjusts the batching max size
+func (ui *ProducerUI) adjustBatchSize(delta int) {
+	cfg := ui.pool.GetConfig()
+	current := cfg.Producer.BatchingMaxSize
+
+	// Adjust in increments of 100
+	increment := 100
+	if current > 1000 {
+		increment = 500
+	}
+
+	newSize := current + (delta * increment)
+	if newSize < 1 {
+		newSize = 1
+	}
+	if newSize > 10000 {
+		newSize = 10000
+	}
+
+	ui.pool.UpdateBatchSize(newSize)
+}
+
+// adjustCompression cycles through compression types
+func (ui *ProducerUI) adjustCompression(delta int) {
+	compressionTypes := []string{"NONE", "LZ4", "ZLIB", "ZSTD"}
+	cfg := ui.pool.GetConfig()
+	current := cfg.Producer.CompressionType
+
+	// Find current index
+	currentIdx := 0
+	for i, ct := range compressionTypes {
+		if ct == current {
+			currentIdx = i
+			break
+		}
+	}
+
+	// Calculate new index
+	newIdx := currentIdx + delta
+	if newIdx < 0 {
+		newIdx = len(compressionTypes) - 1
+	} else if newIdx >= len(compressionTypes) {
+		newIdx = 0
+	}
+
+	ui.pool.UpdateCompression(compressionTypes[newIdx])
+}
+
+// formatTargetRate formats the target rate for display
+func formatTargetRate(rate int) string {
+	if rate == 0 {
+		return "unlimited"
+	}
+	if rate >= 1000 {
+		return fmt.Sprintf("%dk/s", rate/1000)
+	}
+	return fmt.Sprintf("%d/s", rate)
 }
 
 // showHelp displays the help modal
@@ -276,6 +410,47 @@ func (ui *ProducerUI) showHelp() {
 // hideHelp hides the help modal
 func (ui *ProducerUI) hideHelp() {
 	ui.showingHelp = false
+	ui.app.SetRoot(ui.mainLayout, true)
+}
+
+// toggleLogs shows/hides the log window
+func (ui *ProducerUI) toggleLogs() {
+	if ui.showingLogs {
+		ui.hideLogs()
+	} else {
+		ui.showLogs()
+	}
+}
+
+// showLogs displays the log window
+func (ui *ProducerUI) showLogs() {
+	ui.showingLogs = true
+	ui.logWindow.Update()
+
+	// Set input capture for log window
+	ui.logWindow.GetTextView().SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'l' || event.Rune() == 'L' || event.Key() == tcell.KeyEscape {
+			ui.hideLogs()
+			return nil
+		}
+		if event.Rune() == 'c' || event.Rune() == 'C' {
+			ui.logBuffer.Clear()
+			ui.logWindow.Update()
+			return nil
+		}
+		if event.Rune() == 'q' || event.Rune() == 'Q' || event.Key() == tcell.KeyCtrlC {
+			ui.shutdown()
+			return nil
+		}
+		return event
+	})
+
+	ui.app.SetRoot(ui.logWindow.GetTextView(), true)
+}
+
+// hideLogs hides the log window
+func (ui *ProducerUI) hideLogs() {
+	ui.showingLogs = false
 	ui.app.SetRoot(ui.mainLayout, true)
 }
 
@@ -299,6 +474,9 @@ func (ui *ProducerUI) updateLoop() {
 			snapshot := ui.pool.GetMetrics().GetSnapshot()
 
 			ui.app.QueueUpdateDraw(func() {
+				// Update control menu
+				ui.updateControlMenu()
+
 				// Update metrics panel
 				ui.metricsPanel.UpdateProducerMetrics(snapshot)
 
@@ -306,13 +484,18 @@ func (ui *ProducerUI) updateLoop() {
 				ui.graphWidget.AddDataPoint(snapshot.Throughput.SendRate)
 
 				// Update status bar
-				shortcuts := "[Q]uit  [P]ause  [R]eset  [+/-]Workers  [H]elp"
+				shortcuts := "↑↓←→ Navigate  [Q]uit  [P]ause  [R]eset  [L]ogs  [H]elp"
 				ui.statusBar.Update(
 					ui.pool.IsRunning(),
 					ui.pool.WorkerCount(),
 					snapshot.Elapsed,
 					shortcuts,
 				)
+
+				// Update log window if visible
+				if ui.showingLogs && ui.logWindow != nil {
+					ui.logWindow.Update()
+				}
 			})
 		}
 	}
@@ -337,29 +520,14 @@ func (ui *ProducerUI) Run() error {
 }
 
 // RunProducerUI is the main entry point for the producer UI
-func RunProducerUI(ctx context.Context, pool *worker.Pool) error {
+func RunProducerUI(ctx context.Context, pool *worker.Pool, logBuffer *LogBuffer) error {
 	ui := NewProducerUI(ctx, pool)
+	ui.logBuffer = logBuffer
+	ui.logWindow = NewLogWindow(logBuffer)
 	return ui.Run()
 }
 
 // getConfigFromPool extracts config from pool (helper function)
 func getConfigFromPool(pool *worker.Pool) *config.Config {
-	// This is a workaround since Pool doesn't expose Config
-	// In a real implementation, you'd add a GetConfig() method to Pool
-	// For now, we'll use reflection or create a default config
-	return &config.Config{
-		Pulsar: config.PulsarConfig{
-			ServiceURL: "pulsar://localhost:6650",
-			Topic:      "persistent://public/default/perf-test",
-		},
-		Producer: config.ProducerConfig{
-			NumProducers:    pool.WorkerCount(),
-			BatchingMaxSize: 100,
-			MessageSize:     1024,
-			CompressionType: "LZ4",
-		},
-		Performance: config.PerformanceConfig{
-			TargetThroughput: 1000,
-		},
-	}
+	return pool.GetConfig()
 }

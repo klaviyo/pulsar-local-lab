@@ -3,12 +3,12 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	pulsarlog "github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/pulsar-local-lab/perf-test/internal/config"
 )
 
@@ -36,9 +36,9 @@ type ProducerClient struct {
 	producerCfg *config.ProducerConfig
 
 	// Connection state management
-	mu         sync.RWMutex
-	connected  bool
-	closed     bool
+	mu        sync.RWMutex
+	connected bool
+	closed    bool
 
 	// Statistics tracking
 	stats ProducerStats
@@ -117,9 +117,10 @@ func (pc *ProducerClient) connect(ctx context.Context) error {
 
 	// Create Pulsar client with connection pooling and timeout
 	client, err := pulsar.NewClient(pulsar.ClientOptions{
-		URL:              pc.pulsarCfg.ServiceURL,
-		OperationTimeout: 30 * time.Second,
+		URL:               pc.pulsarCfg.ServiceURL,
+		OperationTimeout:  30 * time.Second,
 		ConnectionTimeout: 30 * time.Second,
+		Logger:            pulsarlog.DefaultNopLogger(), // Disable all Pulsar client logging
 	})
 	if err != nil {
 		pc.lastError = err
@@ -146,7 +147,7 @@ func (pc *ProducerClient) connect(ctx context.Context) error {
 	pc.connected = true
 	pc.lastError = nil
 
-	log.Printf("Producer connected to topic: %s", pc.pulsarCfg.Topic)
+	// Suppressed: log.Printf("Producer connected to topic: %s", pc.pulsarCfg.Topic)
 	return nil
 }
 
@@ -323,7 +324,8 @@ func (pc *ProducerClient) Close() error {
 	// Flush pending messages before closing
 	if pc.producer != nil {
 		if err := pc.producer.Flush(); err != nil {
-			log.Printf("Warning: failed to flush producer during close: %v", err)
+			// Suppressed: log.Printf("Warning: failed to flush producer during close: %v", err)
+			_ = err
 		}
 		pc.producer.Close()
 	}
@@ -332,7 +334,7 @@ func (pc *ProducerClient) Close() error {
 		pc.client.Close()
 	}
 
-	log.Printf("Producer closed for topic: %s", pc.pulsarCfg.Topic)
+	// Suppressed: log.Printf("Producer closed for topic: %s", pc.pulsarCfg.Topic)
 	return nil
 }
 
@@ -419,7 +421,7 @@ func (pc *ProducerClient) Reconnect(ctx context.Context, maxRetries int) error {
 		}
 
 		if attempt > 0 {
-			log.Printf("Reconnection attempt %d after %v", attempt+1, backoff)
+			// Suppressed: log.Printf("Reconnection attempt %d after %v", attempt+1, backoff)
 			time.Sleep(backoff)
 
 			// Exponential backoff with max cap
@@ -430,11 +432,11 @@ func (pc *ProducerClient) Reconnect(ctx context.Context, maxRetries int) error {
 		}
 
 		if err := pc.connect(ctx); err != nil {
-			log.Printf("Reconnection attempt %d failed: %v", attempt+1, err)
+			// Suppressed: log.Printf("Reconnection attempt %d failed: %v", attempt+1, err)
 			continue
 		}
 
-		log.Printf("Successfully reconnected after %d attempts", attempt+1)
+		// Suppressed: log.Printf("Successfully reconnected after %d attempts", attempt+1)
 		return nil
 	}
 

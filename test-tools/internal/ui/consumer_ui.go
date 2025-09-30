@@ -23,8 +23,11 @@ type ConsumerUI struct {
 	controlMenu  *ControlMenu
 	statusBar    *StatusBar
 	helpModal    *HelpModal
+	logWindow    *LogWindow
+	logBuffer    *LogBuffer
 	mainLayout   *tview.Flex
 	showingHelp  bool
+	showingLogs  bool
 	config       *config.Config
 }
 
@@ -54,6 +57,8 @@ func NewConsumerUI(ctx context.Context, pool *worker.Pool) *ConsumerUI {
 		"Enter/Space":   "Activate button",
 		"P":             "Pause/Resume",
 		"R":             "Reset metrics",
+		"L":             "Show/hide logs",
+		"C":             "Clear logs (when visible)",
 		"H / ?":         "Show/hide help",
 	}
 	helpModal := NewHelpModal(shortcuts)
@@ -209,6 +214,14 @@ func (ui *ConsumerUI) handleInput(event *tcell.EventKey) *tcell.EventKey {
 	case 'r', 'R':
 		ui.resetMetrics()
 		return nil
+	case 'l', 'L':
+		ui.toggleLogs()
+		return nil
+	case 'c', 'C':
+		if ui.showingLogs {
+			ui.logBuffer.Clear()
+		}
+		return nil
 	case ' ': // Space bar
 		ui.controlMenu.ActivateSelected()
 		ui.updateControlMenu()
@@ -280,6 +293,47 @@ func (ui *ConsumerUI) hideHelp() {
 	ui.app.SetRoot(ui.mainLayout, true)
 }
 
+// toggleLogs shows/hides the log window
+func (ui *ConsumerUI) toggleLogs() {
+	if ui.showingLogs {
+		ui.hideLogs()
+	} else {
+		ui.showLogs()
+	}
+}
+
+// showLogs displays the log window
+func (ui *ConsumerUI) showLogs() {
+	ui.showingLogs = true
+	ui.logWindow.Update()
+
+	// Set input capture for log window
+	ui.logWindow.GetTextView().SetInputCapture(func(event *tcell.EventKey) *tcell.EventKey {
+		if event.Rune() == 'l' || event.Rune() == 'L' || event.Key() == tcell.KeyEscape {
+			ui.hideLogs()
+			return nil
+		}
+		if event.Rune() == 'c' || event.Rune() == 'C' {
+			ui.logBuffer.Clear()
+			ui.logWindow.Update()
+			return nil
+		}
+		if event.Rune() == 'q' || event.Rune() == 'Q' || event.Key() == tcell.KeyCtrlC {
+			ui.shutdown()
+			return nil
+		}
+		return event
+	})
+
+	ui.app.SetRoot(ui.logWindow.GetTextView(), true)
+}
+
+// hideLogs hides the log window
+func (ui *ConsumerUI) hideLogs() {
+	ui.showingLogs = false
+	ui.app.SetRoot(ui.mainLayout, true)
+}
+
 // shutdown stops the UI and worker pool
 func (ui *ConsumerUI) shutdown() {
 	ui.app.Stop()       // Stop TUI first to restore terminal
@@ -300,6 +354,9 @@ func (ui *ConsumerUI) updateLoop() {
 			snapshot := ui.pool.GetMetrics().GetSnapshot()
 
 			ui.app.QueueUpdateDraw(func() {
+				// Update control menu
+				ui.updateControlMenu()
+
 				// Update metrics panel
 				ui.metricsPanel.UpdateConsumerMetrics(snapshot)
 
@@ -307,13 +364,18 @@ func (ui *ConsumerUI) updateLoop() {
 				ui.graphWidget.AddDataPoint(snapshot.Throughput.ReceiveRate)
 
 				// Update status bar
-				shortcuts := "[Q]uit  [P]ause  [R]eset  [+/-]Workers  [S]eek  [H]elp"
+				shortcuts := "↑↓←→ Navigate  [Q]uit  [P]ause  [R]eset  [L]ogs  [H]elp"
 				ui.statusBar.Update(
 					ui.pool.IsRunning(),
 					ui.pool.WorkerCount(),
 					snapshot.Elapsed,
 					shortcuts,
 				)
+
+				// Update log window if visible
+				if ui.showingLogs && ui.logWindow != nil {
+					ui.logWindow.Update()
+				}
 			})
 		}
 	}
@@ -338,29 +400,14 @@ func (ui *ConsumerUI) Run() error {
 }
 
 // RunConsumerUI is the main entry point for the consumer UI
-func RunConsumerUI(ctx context.Context, pool *worker.Pool) error {
+func RunConsumerUI(ctx context.Context, pool *worker.Pool, logBuffer *LogBuffer) error {
 	ui := NewConsumerUI(ctx, pool)
+	ui.logBuffer = logBuffer
+	ui.logWindow = NewLogWindow(logBuffer)
 	return ui.Run()
 }
 
 // getConsumerConfigFromPool extracts config from pool (helper function)
 func getConsumerConfigFromPool(pool *worker.Pool) *config.Config {
-	// This is a workaround since Pool doesn't expose Config
-	// In a real implementation, you'd add a GetConfig() method to Pool
-	// For now, we'll use reflection or create a default config
-	return &config.Config{
-		Pulsar: config.PulsarConfig{
-			ServiceURL: "pulsar://localhost:6650",
-			Topic:      "persistent://public/default/perf-test",
-		},
-		Consumer: config.ConsumerConfig{
-			NumConsumers:       pool.WorkerCount(),
-			SubscriptionName:   "perf-test-sub",
-			SubscriptionType:   "Shared",
-			ReceiverQueueSize:  1000,
-		},
-		Performance: config.PerformanceConfig{
-			TargetThroughput: 0, // No target for consumer
-		},
-	}
+	return pool.GetConfig()
 }

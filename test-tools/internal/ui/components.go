@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -521,6 +522,122 @@ func minFloat64(a, b float64) float64 {
 // maxFloat64 returns the maximum of two float64s
 func maxFloat64(a, b float64) float64 {
 	return math.Max(a, b)
+}
+
+// LogBuffer is a thread-safe ring buffer for capturing log output
+type LogBuffer struct {
+	mu       sync.RWMutex
+	lines    []string
+	maxLines int
+}
+
+// NewLogBuffer creates a new log buffer with specified max lines
+func NewLogBuffer(maxLines int) *LogBuffer {
+	return &LogBuffer{
+		lines:    make([]string, 0, maxLines),
+		maxLines: maxLines,
+	}
+}
+
+// Write implements io.Writer interface for capturing log output
+func (lb *LogBuffer) Write(p []byte) (n int, err error) {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+
+	// Split by newlines and add each line
+	text := string(p)
+	lines := strings.Split(text, "\n")
+
+	for _, line := range lines {
+		if line == "" {
+			continue
+		}
+
+		// Add timestamp
+		timestamped := fmt.Sprintf("[%s] %s", time.Now().Format("15:04:05"), line)
+		lb.lines = append(lb.lines, timestamped)
+
+		// Keep only last maxLines
+		if len(lb.lines) > lb.maxLines {
+			lb.lines = lb.lines[len(lb.lines)-lb.maxLines:]
+		}
+	}
+
+	return len(p), nil
+}
+
+// GetLines returns a copy of all buffered log lines
+func (lb *LogBuffer) GetLines() []string {
+	lb.mu.RLock()
+	defer lb.mu.RUnlock()
+
+	result := make([]string, len(lb.lines))
+	copy(result, lb.lines)
+	return result
+}
+
+// Clear clears all buffered lines
+func (lb *LogBuffer) Clear() {
+	lb.mu.Lock()
+	defer lb.mu.Unlock()
+	lb.lines = lb.lines[:0]
+}
+
+// LogWindow displays captured log output
+type LogWindow struct {
+	*tview.Modal
+	logBuffer *LogBuffer
+	textView  *tview.TextView
+}
+
+// NewLogWindow creates a new log window
+func NewLogWindow(logBuffer *LogBuffer) *LogWindow {
+	textView := tview.NewTextView().
+		SetDynamicColors(true).
+		SetScrollable(true).
+		SetChangedFunc(func() {
+			// Auto-scroll to bottom
+		})
+
+	textView.SetBorder(true).
+		SetTitle(" System Logs (Press L to close, C to clear) ").
+		SetBorderColor(ColorBorder).
+		SetTitleColor(ColorHeader)
+
+	// Create modal wrapper
+	modal := tview.NewModal().
+		SetText("").
+		AddButtons([]string{"Close"})
+
+	lw := &LogWindow{
+		Modal:     modal,
+		logBuffer: logBuffer,
+		textView:  textView,
+	}
+
+	return lw
+}
+
+// Update refreshes the log display
+func (lw *LogWindow) Update() {
+	lines := lw.logBuffer.GetLines()
+	lw.textView.Clear()
+
+	if len(lines) == 0 {
+		fmt.Fprintf(lw.textView, "\n  [%s]No logs captured yet[-]", colorName(ColorLabel))
+	} else {
+		for _, line := range lines {
+			fmt.Fprintf(lw.textView, "%s\n", line)
+		}
+	}
+
+	// Scroll to bottom
+	lw.textView.ScrollToEnd()
+}
+
+// GetTextView returns the internal text view for layout purposes
+func (lw *LogWindow) GetTextView() *tview.TextView {
+	return lw.textView
 }
 
 // ControlMenuItem represents a controllable parameter

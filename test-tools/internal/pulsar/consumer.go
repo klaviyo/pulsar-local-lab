@@ -3,12 +3,12 @@ package pulsar
 import (
 	"context"
 	"fmt"
-	"log"
 	"sync"
 	"sync/atomic"
 	"time"
 
 	"github.com/apache/pulsar-client-go/pulsar"
+	pulsarlog "github.com/apache/pulsar-client-go/pulsar/log"
 	"github.com/pulsar-local-lab/perf-test/internal/config"
 )
 
@@ -134,6 +134,7 @@ func (cc *ConsumerClient) connect(ctx context.Context) error {
 		URL:               cc.pulsarCfg.ServiceURL,
 		OperationTimeout:  30 * time.Second,
 		ConnectionTimeout: 30 * time.Second,
+		Logger:            pulsarlog.DefaultNopLogger(), // Disable all Pulsar client logging
 	})
 	if err != nil {
 		cc.lastError = err
@@ -317,7 +318,7 @@ func (cc *ConsumerClient) Seek(msgID pulsar.MessageID) error {
 		return fmt.Errorf("failed to seek: %w", err)
 	}
 
-	log.Printf("Consumer %s seeked to message ID: %v", cc.consumerID, msgID)
+	// Suppressed: log.Printf("Consumer %s seeked to message ID: %v", cc.consumerID, msgID)
 	return nil
 }
 
@@ -341,7 +342,7 @@ func (cc *ConsumerClient) SeekByTime(timestamp time.Time) error {
 		return fmt.Errorf("failed to seek by time: %w", err)
 	}
 
-	log.Printf("Consumer %s seeked to time: %v", cc.consumerID, timestamp)
+	// Suppressed: log.Printf("Consumer %s seeked to time: %v", cc.consumerID, timestamp)
 	return nil
 }
 
@@ -486,7 +487,7 @@ func (cc *ConsumerClient) Reconnect(ctx context.Context, maxRetries int) error {
 		}
 
 		if attempt > 0 {
-			log.Printf("Consumer %s reconnection attempt %d after %v", cc.consumerID, attempt+1, backoff)
+			// Suppressed: log.Printf("Consumer %s reconnection attempt %d after %v", cc.consumerID, attempt+1, backoff)
 			time.Sleep(backoff)
 
 			// Exponential backoff with max cap
@@ -497,11 +498,11 @@ func (cc *ConsumerClient) Reconnect(ctx context.Context, maxRetries int) error {
 		}
 
 		if err := cc.connect(ctx); err != nil {
-			log.Printf("Consumer %s reconnection attempt %d failed: %v", cc.consumerID, attempt+1, err)
+			// Suppressed: log.Printf("Consumer %s reconnection attempt %d failed: %v", cc.consumerID, attempt+1, err)
 			continue
 		}
 
-		log.Printf("Consumer %s successfully reconnected after %d attempts", cc.consumerID, attempt+1)
+		// Suppressed: log.Printf("Consumer %s successfully reconnected after %d attempts", cc.consumerID, attempt+1)
 		return nil
 	}
 
@@ -528,7 +529,7 @@ func (cc *ConsumerClient) Unsubscribe() error {
 		return fmt.Errorf("failed to unsubscribe: %w", err)
 	}
 
-	log.Printf("Consumer %s unsubscribed from topic: %s", cc.consumerID, cc.pulsarCfg.Topic)
+	// Suppressed: log.Printf("Consumer %s unsubscribed from topic: %s", cc.consumerID, cc.pulsarCfg.Topic)
 	return nil
 }
 

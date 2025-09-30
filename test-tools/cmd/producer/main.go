@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"os/signal"
@@ -54,8 +55,43 @@ func main() {
 		os.Exit(0)
 	}
 
-	// Disable all logging to prevent terminal corruption with TUI
-	log.SetOutput(os.NewFile(0, os.DevNull))
+	// Create log buffer to capture all output
+	logBuffer := ui.NewLogBuffer(500)
+
+	// Redirect stdout and stderr to log buffer (captures ALL output including Pulsar client)
+	stdoutReader, stdoutWriter, err := os.Pipe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create stdout pipe: %v\n", err)
+		os.Exit(1)
+	}
+	stderrReader, stderrWriter, err := os.Pipe()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create stderr pipe: %v\n", err)
+		os.Exit(1)
+	}
+
+	// Save original stdout/stderr for emergency error messages
+	origStdout := os.Stdout
+	origStderr := os.Stderr
+
+	// Redirect OS-level stdout/stderr
+	os.Stdout = stdoutWriter
+	os.Stderr = stderrWriter
+	log.SetOutput(logBuffer)
+
+	// Start goroutines to copy pipe output to log buffer
+	go func() {
+		_, _ = io.Copy(logBuffer, stdoutReader)
+	}()
+	go func() {
+		_, _ = io.Copy(logBuffer, stderrReader)
+	}()
+
+	// Restore stderr for configuration errors (before UI starts)
+	defer func() {
+		os.Stdout = origStdout
+		os.Stderr = origStderr
+	}()
 
 	// Load configuration
 	cfg, err := loadConfiguration()
@@ -91,9 +127,8 @@ func main() {
 		log.Fatalf("Failed to create producer pool: %v", err)
 	}
 
-	// Start the interactive UI (blocks until quit)
-	// Note: All logging disabled during TUI mode to prevent terminal corruption
-	_ = ui.RunProducerUI(ctx, pool)
+	// Start the interactive UI with log buffer (blocks until quit)
+	_ = ui.RunProducerUI(ctx, pool, logBuffer)
 
 	// Graceful shutdown (silent - TUI has been stopped)
 	_ = pool.Stop()
