@@ -56,3 +56,12 @@ broker:
 
 proxy:
   replicaCount: 1
+  service:
+    type: NodePort
+    ports:
+      - name: http
+        port: 8080
+        nodePort: 30080
+      - name: pulsar
+        port: 6650
+        nodePort: 30650
