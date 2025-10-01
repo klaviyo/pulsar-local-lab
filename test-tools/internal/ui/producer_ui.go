@@ -60,7 +60,7 @@ func NewProducerUI(ctx context.Context, pool *worker.Pool) *ProducerUI {
 		"L":             "Show/hide logs",
 		"C":             "Clear logs (when visible)",
 		"H / ?":         "Show/hide help",
-		"* (asterisk)":  "Settings apply to new workers only",
+		"* (asterisk)":  "Use 'Restart Workers' to apply",
 	}
 	helpModal := NewHelpModal(shortcuts)
 
@@ -112,7 +112,17 @@ func (ui *ProducerUI) setupControlMenu() {
 		},
 	})
 
-	// Batch Size control (requires new workers to take effect)
+	// Message Size control (requires restart to take effect)
+	ui.controlMenu.AddItem(&ControlMenuItem{
+		Label:      "Message Size*",
+		Value:      formatMessageSize(cfg.Producer.MessageSize),
+		Adjustable: true,
+		Action: func(delta int) {
+			ui.adjustMessageSize(delta)
+		},
+	})
+
+	// Batch Size control (requires restart to take effect)
 	ui.controlMenu.AddItem(&ControlMenuItem{
 		Label:      "Batch Size*",
 		Value:      fmt.Sprintf("%d", cfg.Producer.BatchingMaxSize),
@@ -122,13 +132,23 @@ func (ui *ProducerUI) setupControlMenu() {
 		},
 	})
 
-	// Compression Type control (requires new workers to take effect)
+	// Compression Type control (requires restart to take effect)
 	ui.controlMenu.AddItem(&ControlMenuItem{
 		Label:      "Compression*",
 		Value:      cfg.Producer.CompressionType,
 		Adjustable: true,
 		Action: func(delta int) {
 			ui.adjustCompression(delta)
+		},
+	})
+
+	// Restart Workers button (applies settings marked with *)
+	ui.controlMenu.AddItem(&ControlMenuItem{
+		Label:      "Restart Workers",
+		Value:      "",
+		Adjustable: false,
+		ToggleFunc: func() {
+			ui.restartWorkers()
 		},
 	})
 
@@ -306,11 +326,13 @@ func (ui *ProducerUI) updateControlMenu() {
 	cfg := ui.pool.GetConfig()
 
 	// Update values in menu items
-	if len(ui.controlMenu.items) >= 4 {
+	// Order: Workers, Target Rate, Message Size, Batch Size, Compression, Restart, Pause, Reset
+	if len(ui.controlMenu.items) >= 5 {
 		ui.controlMenu.items[0].Value = fmt.Sprintf("%d", ui.pool.WorkerCount())
 		ui.controlMenu.items[1].Value = formatTargetRate(cfg.Performance.TargetThroughput)
-		ui.controlMenu.items[2].Value = fmt.Sprintf("%d", cfg.Producer.BatchingMaxSize)
-		ui.controlMenu.items[3].Value = cfg.Producer.CompressionType
+		ui.controlMenu.items[2].Value = formatMessageSize(cfg.Producer.MessageSize)
+		ui.controlMenu.items[3].Value = fmt.Sprintf("%d", cfg.Producer.BatchingMaxSize)
+		ui.controlMenu.items[4].Value = cfg.Producer.CompressionType
 	}
 	ui.controlMenu.Render()
 }
@@ -388,6 +410,43 @@ func (ui *ProducerUI) adjustCompression(delta int) {
 	ui.pool.UpdateCompression(compressionTypes[newIdx])
 }
 
+// adjustMessageSize adjusts the message size
+func (ui *ProducerUI) adjustMessageSize(delta int) {
+	cfg := ui.pool.GetConfig()
+	current := cfg.Producer.MessageSize
+
+	// Adjust in increments based on current value
+	var increment int
+	if current < 1024 {
+		increment = 256 // 256 bytes
+	} else if current < 10240 {
+		increment = 1024 // 1 KB
+	} else if current < 102400 {
+		increment = 10240 // 10 KB
+	} else {
+		increment = 102400 // 100 KB
+	}
+
+	newSize := current + (delta * increment)
+	if newSize < 256 {
+		newSize = 256 // Minimum 256 bytes
+	}
+	if newSize > 1048576 {
+		newSize = 1048576 // Maximum 1 MB
+	}
+
+	ui.pool.UpdateMessageSize(newSize)
+}
+
+// restartWorkers restarts all workers to apply immutable settings
+func (ui *ProducerUI) restartWorkers() {
+	err := ui.pool.RestartWorkers(ui.ctx)
+	if err != nil {
+		// Silently handle error - can't log during TUI
+		_ = err
+	}
+}
+
 // formatTargetRate formats the target rate for display
 func formatTargetRate(rate int) string {
 	if rate == 0 {
@@ -397,6 +456,17 @@ func formatTargetRate(rate int) string {
 		return fmt.Sprintf("%dk/s", rate/1000)
 	}
 	return fmt.Sprintf("%d/s", rate)
+}
+
+// formatMessageSize formats message size for display
+func formatMessageSize(size int) string {
+	if size >= 1048576 {
+		return fmt.Sprintf("%.1fMB", float64(size)/1048576)
+	}
+	if size >= 1024 {
+		return fmt.Sprintf("%.1fKB", float64(size)/1024)
+	}
+	return fmt.Sprintf("%dB", size)
 }
 
 // showHelp displays the help modal
@@ -477,6 +547,9 @@ func (ui *ProducerUI) updateLoop() {
 			ui.app.QueueUpdateDraw(func() {
 				// Update control menu
 				ui.updateControlMenu()
+
+				// Update configuration panel
+				ui.configPanel.Render()
 
 				// Update metrics panel
 				ui.metricsPanel.UpdateProducerMetrics(snapshot)

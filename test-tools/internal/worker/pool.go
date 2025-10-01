@@ -325,3 +325,83 @@ func (p *Pool) UpdateCompression(compressionType string) {
 	defer p.mu.Unlock()
 	p.config.Producer.CompressionType = compressionType
 }
+
+// UpdateMessageSize updates the message size
+func (p *Pool) UpdateMessageSize(size int) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.config.Producer.MessageSize = size
+}
+
+// RestartWorkers restarts all workers to apply immutable configuration changes
+// This is needed for settings like batch size, compression, and message size
+func (p *Pool) RestartWorkers(ctx context.Context) error {
+	p.mu.Lock()
+
+	// Store current state
+	wasRunning := p.running
+	currentWorkerCount := len(p.workers)
+	currentConfig := p.config
+
+	// Stop all workers
+	oldWorkers := p.workers
+	p.workers = make([]Worker, 0, currentWorkerCount)
+	p.mu.Unlock()
+
+	// Cancel all worker contexts and wait for them to stop
+	for _, worker := range oldWorkers {
+		if pw, ok := worker.(*ProducerWorker); ok {
+			pw.CancelContext()
+		}
+	}
+
+	// Wait for all goroutines to finish (with timeout)
+	done := make(chan struct{})
+	go func() {
+		for _, worker := range oldWorkers {
+			if pw, ok := worker.(*ProducerWorker); ok {
+				pw.WaitForCompletion()
+			}
+		}
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// All workers stopped
+	case <-time.After(10 * time.Second):
+		// Timeout - continue anyway
+	}
+
+	// Stop (flush and close) all old workers
+	for _, worker := range oldWorkers {
+		_ = worker.Stop()
+	}
+
+	p.mu.Lock()
+	p.running = false
+	p.mu.Unlock()
+
+	// Create new workers with updated configuration
+	for i := 0; i < currentWorkerCount; i++ {
+		worker, err := NewProducerWorker(i, currentConfig, p.collector)
+		if err != nil {
+			return fmt.Errorf("failed to create worker %d during restart: %w", i, err)
+		}
+
+		// Set per-worker context
+		workerCtx, cancelFunc := context.WithCancel(ctx)
+		worker.SetContext(workerCtx, cancelFunc)
+
+		p.mu.Lock()
+		p.workers = append(p.workers, worker)
+		p.mu.Unlock()
+	}
+
+	// Start workers if pool was running before
+	if wasRunning {
+		return p.Start(ctx)
+	}
+
+	return nil
+}
