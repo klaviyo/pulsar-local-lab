@@ -38,7 +38,7 @@ pulsar:
     replicaCount: 1
 
   bookkeeper:
-    replicaCount: 4
+    replicaCount: 2
     configData:
       # minimal memory use for bookkeeper
       # https://bookkeeper.apache.org/docs/reference/config#db-ledger-storage-settings
@@ -48,7 +48,7 @@ pulsar:
       dbStorage_rocksDB_blockCacheSize: "8388608"
 
   broker:
-    replicaCount: 4
+    replicaCount: 2
     configData:
       ## Enable `autoSkipNonRecoverableData` since bookkeeper is running
       ## without persistence
@@ -59,4 +59,47 @@ pulsar:
       managedLedgerDefaultAckQuorum: "1"
 
   proxy:
-    replicaCount: 2
+    replicaCount: 1
+
+  # Enable monitoring stack with Grafana dashboards
+  kube-prometheus-stack:
+    enabled: true
+    prometheus:
+      enabled: true
+      prometheusSpec:
+        retention: 24h
+        storageSpec:
+          volumeClaimTemplate:
+            spec:
+              accessModes: ["ReadWriteOnce"]
+              resources:
+                requests:
+                  storage: 10Gi
+    grafana:
+      enabled: true
+      adminPassword: admin
+      sidecar:
+        dashboards:
+          enabled: true
+          label: grafana_dashboard
+          labelValue: "1"
+          searchNamespace: ALL
+      persistence:
+        enabled: false
+
+  # Enable pod monitors for metrics collection
+  bookkeeper:
+    podMonitor:
+      enabled: true
+
+  broker:
+    podMonitor:
+      enabled: true
+
+  proxy:
+    podMonitor:
+      enabled: true
+
+  zookeeper:
+    podMonitor:
+      enabled: true

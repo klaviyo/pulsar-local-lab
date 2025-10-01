@@ -38,7 +38,8 @@
       "Bash(./bin/producer:*)",
       "Bash(kubectl get:*)",
       "Read(//Users/fabian.haupt/go/pkg/mod/github.com/apache/**)",
-      "Bash(go get:*)"
+      "Bash(go get:*)",
+      "WebFetch(domain:github.com)"
     ],
     "deny": [],
     "ask": []

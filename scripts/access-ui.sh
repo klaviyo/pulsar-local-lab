@@ -25,7 +25,7 @@ fi
 
 # Check if services exist
 echo "Checking services..."
-if ! kubectl get svc -n "$NAMESPACE" grafana &> /dev/null; then
+if ! kubectl get svc -n "$NAMESPACE" pulsar-grafana &> /dev/null; then
     echo "Warning: Grafana service not found in namespace '$NAMESPACE'"
 fi
 
@@ -41,14 +41,15 @@ echo ""
 echo "Starting port forwarding..."
 echo ""
 
-# Kill any existing port forwards on these ports
-lsof -ti:$GRAFANA_PORT | xargs kill -9 2>/dev/null || true
-lsof -ti:$PULSAR_MANAGER_PORT | xargs kill -9 2>/dev/null || true
-lsof -ti:$BROKER_CLIENT_PORT | xargs kill -9 2>/dev/null || true
-lsof -ti:$BROKER_ADMIN_PORT | xargs kill -9 2>/dev/null || true
+# Kill any existing kubectl port-forward processes on these ports
+pkill -f "kubectl port-forward.*$GRAFANA_PORT" 2>/dev/null || true
+pkill -f "kubectl port-forward.*$PULSAR_MANAGER_PORT" 2>/dev/null || true
+pkill -f "kubectl port-forward.*$BROKER_CLIENT_PORT" 2>/dev/null || true
+pkill -f "kubectl port-forward.*$BROKER_ADMIN_PORT" 2>/dev/null || true
+sleep 1
 
 # Start port forwarding in background
-kubectl port-forward -n "$NAMESPACE" svc/grafana "$GRAFANA_PORT:3000" &
+kubectl port-forward -n "$NAMESPACE" svc/pulsar-grafana "$GRAFANA_PORT:3000" &
 GRAFANA_PID=$!
 
 kubectl port-forward -n "$NAMESPACE" svc/pulsar-pulsar-manager "$PULSAR_MANAGER_PORT:9527" &
