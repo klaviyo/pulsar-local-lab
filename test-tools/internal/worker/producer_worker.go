@@ -3,6 +3,7 @@ package worker
 import (
 	"context"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/pulsar-local-lab/perf-test/internal/config"
@@ -14,12 +15,15 @@ import (
 
 // ProducerWorker represents a producer worker
 type ProducerWorker struct {
-	id        int
-	client    *pulsar.ProducerClient
-	pool      *generator.PayloadPool
-	collector *metrics.Collector
-	limiter   *ratelimit.Limiter
-	config    *config.Config
+	id         int
+	client     *pulsar.ProducerClient
+	pool       *generator.PayloadPool
+	collector  *metrics.Collector
+	limiter    *ratelimit.Limiter
+	config     *config.Config
+	workerCtx  context.Context
+	cancelFunc context.CancelFunc
+	wg         sync.WaitGroup
 }
 
 // NewProducerWorker creates a new producer worker
@@ -52,7 +56,18 @@ func NewProducerWorker(id int, cfg *config.Config, collector *metrics.Collector)
 }
 
 // Start starts the producer worker
+// The context passed here is ignored - worker uses its own workerCtx set during initialization
 func (pw *ProducerWorker) Start(ctx context.Context) error {
+	// Use worker's own context if set, otherwise fall back to provided context
+	workCtx := pw.workerCtx
+	if workCtx == nil {
+		workCtx = ctx
+	}
+
+	// Mark work group as started
+	pw.wg.Add(1)
+	defer pw.wg.Done()
+
 	// Warmup period
 	if pw.config.Performance.Warmup > 0 {
 		time.Sleep(pw.config.Performance.Warmup)
@@ -62,7 +77,7 @@ func (pw *ProducerWorker) Start(ctx context.Context) error {
 	startTime := time.Now()
 	for {
 		select {
-		case <-ctx.Done():
+		case <-workCtx.Done():
 			return nil
 		default:
 		}
@@ -75,7 +90,10 @@ func (pw *ProducerWorker) Start(ctx context.Context) error {
 
 		// Apply rate limiting if enabled
 		if pw.limiter != nil {
-			pw.limiter.Wait(ctx)
+			if err := pw.limiter.Wait(workCtx); err != nil {
+				// Context cancelled during wait
+				return nil
+			}
 		}
 
 		// Get payload buffer from pool and generate random data
@@ -84,13 +102,17 @@ func (pw *ProducerWorker) Start(ctx context.Context) error {
 
 		// Send message and measure latency
 		sendStart := time.Now()
-		_, err := pw.client.Send(ctx, payload)
+		_, err := pw.client.Send(workCtx, payload)
 		sendLatency := time.Since(sendStart)
 
 		// Return buffer to pool
 		pw.pool.Put(payload)
 
 		if err != nil {
+			// Check if context was cancelled (not a real failure)
+			if workCtx.Err() != nil {
+				return nil
+			}
 			pw.collector.RecordFailure()
 			continue
 		}
@@ -137,4 +159,23 @@ func (pw *ProducerWorker) UpdateRateLimiter(ratePerSecond int) {
 		// Create new limiter
 		pw.limiter = ratelimit.NewLimiter(ratePerSecond)
 	}
+}
+
+// SetContext sets the worker's context and cancel function
+// This must be called before Start() to enable proper shutdown
+func (pw *ProducerWorker) SetContext(ctx context.Context, cancel context.CancelFunc) {
+	pw.workerCtx = ctx
+	pw.cancelFunc = cancel
+}
+
+// CancelContext cancels the worker's context, signaling it to stop
+func (pw *ProducerWorker) CancelContext() {
+	if pw.cancelFunc != nil {
+		pw.cancelFunc()
+	}
+}
+
+// WaitForCompletion waits for the worker's goroutine to finish
+func (pw *ProducerWorker) WaitForCompletion() {
+	pw.wg.Wait()
 }

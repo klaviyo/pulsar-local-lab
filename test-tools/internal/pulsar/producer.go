@@ -297,7 +297,11 @@ func (pc *ProducerClient) Flush() error {
 	producer := pc.producer
 	pc.mu.RUnlock()
 
-	if err := producer.Flush(); err != nil {
+	// Use FlushWithCtx with timeout to prevent indefinite blocking
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := producer.FlushWithCtx(ctx); err != nil {
 		return fmt.Errorf("failed to flush producer: %w", err)
 	}
 
@@ -321,12 +325,14 @@ func (pc *ProducerClient) Close() error {
 	pc.closed = true
 	pc.connected = false
 
-	// Flush pending messages before closing
+	// Flush pending messages before closing with timeout
 	if pc.producer != nil {
-		if err := pc.producer.Flush(); err != nil {
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		if err := pc.producer.FlushWithCtx(ctx); err != nil {
 			// Suppressed: log.Printf("Warning: failed to flush producer during close: %v", err)
 			_ = err
 		}
+		cancel()
 		pc.producer.Close()
 	}
 

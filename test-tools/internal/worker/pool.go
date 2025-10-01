@@ -45,6 +45,11 @@ func NewProducerPool(ctx context.Context, cfg *config.Config) (*Pool, error) {
 			pool.Stop()
 			return nil, fmt.Errorf("failed to create producer worker %d: %w", i, err)
 		}
+
+		// Set per-worker context
+		workerCtx, cancelFunc := context.WithCancel(ctx)
+		worker.SetContext(workerCtx, cancelFunc)
+
 		pool.workers = append(pool.workers, worker)
 	}
 
@@ -171,6 +176,12 @@ func (p *Pool) AddWorker(ctx context.Context, workerFactory func(int) (Worker, e
 		return fmt.Errorf("failed to create worker %d: %w", workerID, err)
 	}
 
+	// Set per-worker context for ProducerWorker
+	if pw, ok := worker.(*ProducerWorker); ok {
+		workerCtx, cancelFunc := context.WithCancel(ctx)
+		pw.SetContext(workerCtx, cancelFunc)
+	}
+
 	p.workers = append(p.workers, worker)
 
 	// Start the worker if pool is running
@@ -188,30 +199,73 @@ func (p *Pool) AddWorker(ctx context.Context, workerFactory func(int) (Worker, e
 	return nil
 }
 
-// RemoveWorker removes the last worker from the pool
+// RemoveWorker removes the last worker from the pool with graceful shutdown
 func (p *Pool) RemoveWorker() error {
 	p.mu.Lock()
-	defer p.mu.Unlock()
 
 	if len(p.workers) == 0 {
+		p.mu.Unlock()
 		return fmt.Errorf("no workers to remove")
 	}
 
 	// Don't allow removing the last worker
 	if len(p.workers) == 1 {
+		p.mu.Unlock()
 		return fmt.Errorf("cannot remove last worker")
 	}
 
-	// Get the last worker
+	// Get the last worker and current target rate
 	lastWorker := p.workers[len(p.workers)-1]
+	currentTargetRate := p.config.Performance.TargetThroughput
 
-	// Stop the worker
-	if err := lastWorker.Stop(); err != nil {
-		return fmt.Errorf("failed to stop worker: %w", err)
+	// Remove from slice immediately to prevent new rate calculations from including it
+	p.workers = p.workers[:len(p.workers)-1]
+	newWorkerCount := len(p.workers)
+
+	p.mu.Unlock()
+
+	// Step 1: Cancel the worker's context to signal it to stop
+	if pw, ok := lastWorker.(*ProducerWorker); ok {
+		pw.CancelContext()
+
+		// Step 2: Wait for the goroutine to finish (with timeout)
+		done := make(chan struct{})
+		go func() {
+			pw.WaitForCompletion()
+			close(done)
+		}()
+
+		select {
+		case <-done:
+			// Worker stopped gracefully
+		case <-time.After(5 * time.Second):
+			// Timeout - continue anyway to prevent UI hang
+			// The worker will eventually stop but might still try to send to closed client
+		}
 	}
 
-	// Remove from slice
-	p.workers = p.workers[:len(p.workers)-1]
+	// Step 3: Now it's safe to stop (flush and close client)
+	if err := lastWorker.Stop(); err != nil {
+		// Don't return error - worker is already removed from pool
+		// Log would go here if we had proper logging
+		_ = err
+	}
+
+	// Step 4: Recalculate rate limits for remaining workers
+	// This ensures remaining workers get their share of the target rate
+	if currentTargetRate > 0 && newWorkerCount > 0 {
+		p.mu.Lock()
+		ratePerWorker := currentTargetRate / newWorkerCount
+		if ratePerWorker == 0 {
+			ratePerWorker = 1
+		}
+		for _, worker := range p.workers {
+			if pw, ok := worker.(*ProducerWorker); ok {
+				pw.UpdateRateLimiter(ratePerWorker)
+			}
+		}
+		p.mu.Unlock()
+	}
 
 	return nil
 }
