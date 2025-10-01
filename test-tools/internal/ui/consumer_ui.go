@@ -19,7 +19,6 @@ type ConsumerUI struct {
 	cancelFunc   context.CancelFunc
 	metricsPanel *MetricsPanel
 	graphWidget  *GraphWidget
-	configPanel  *ConfigPanel
 	controlMenu  *ControlMenu
 	statusBar    *StatusBar
 	helpModal    *HelpModal
@@ -45,7 +44,6 @@ func NewConsumerUI(ctx context.Context, pool *worker.Pool) *ConsumerUI {
 	// Create UI components
 	metricsPanel := NewMetricsPanel("METRICS", targetRate)
 	graphWidget := NewGraphWidget("CONSUMPTION RATE", 60, targetRate)
-	configPanel := NewConfigPanel(cfg, "CONFIGURATION")
 	statusBar := NewStatusBar()
 	controlMenu := NewControlMenu("CONTROLS")
 
@@ -70,7 +68,6 @@ func NewConsumerUI(ctx context.Context, pool *worker.Pool) *ConsumerUI {
 		cancelFunc:   cancel,
 		metricsPanel: metricsPanel,
 		graphWidget:  graphWidget,
-		configPanel:  configPanel,
 		controlMenu:  controlMenu,
 		statusBar:    statusBar,
 		helpModal:    helpModal,
@@ -143,13 +140,12 @@ func (ui *ConsumerUI) buildLayout() {
 		AddItem(ui.metricsPanel, 0, 1, false).
 		AddItem(ui.graphWidget, 0, 2, false)
 
-	// Right content area (metrics, graph, config)
+	// Right content area (metrics and graph)
 	rightContent := tview.NewFlex().SetDirection(tview.FlexRow).
 		AddItem(title, 1, 0, false).
 		AddItem(connInfo, 1, 0, false).
 		AddItem(tview.NewBox().SetBorder(false), 1, 0, false). // Spacer
-		AddItem(topSection, 0, 4, false).
-		AddItem(ui.configPanel, 12, 0, false)
+		AddItem(topSection, 0, 1, false)
 
 	// Main content with control menu on left
 	mainContent := tview.NewFlex().
