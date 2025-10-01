@@ -1,0 +1,21 @@
+apiVersion: v2
+name: pulsar-local-lab
+description: Apache Pulsar deployment for local development and testing
+type: application
+version: 1.0.0
+appVersion: "3.0.2"
+
+dependencies:
+  - name: pulsar
+    version: 3.3.0
+    repository: https://pulsar.apache.org/charts
+
+maintainers:
+  - name: Pulsar Local Lab Team
+
+keywords:
+  - pulsar
+  - messaging
+  - streaming
+  - minikube
+

@@ -60,6 +60,7 @@ func NewProducerUI(ctx context.Context, pool *worker.Pool) *ProducerUI {
 		"L":             "Show/hide logs",
 		"C":             "Clear logs (when visible)",
 		"H / ?":         "Show/hide help",
+		"* (asterisk)":  "Settings apply to new workers only",
 	}
 	helpModal := NewHelpModal(shortcuts)
 
@@ -111,9 +112,9 @@ func (ui *ProducerUI) setupControlMenu() {
 		},
 	})
 
-	// Batch Size control
+	// Batch Size control (requires new workers to take effect)
 	ui.controlMenu.AddItem(&ControlMenuItem{
-		Label:      "Batch Size",
+		Label:      "Batch Size*",
 		Value:      fmt.Sprintf("%d", cfg.Producer.BatchingMaxSize),
 		Adjustable: true,
 		Action: func(delta int) {
@@ -121,9 +122,9 @@ func (ui *ProducerUI) setupControlMenu() {
 		},
 	})
 
-	// Compression Type control (cycle through options)
+	// Compression Type control (requires new workers to take effect)
 	ui.controlMenu.AddItem(&ControlMenuItem{
-		Label:      "Compression",
+		Label:      "Compression*",
 		Value:      cfg.Producer.CompressionType,
 		Adjustable: true,
 		Action: func(delta int) {

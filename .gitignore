@@ -1,2 +1,7 @@
 docker-compose/basic-cluster/data
 test-scripts/performance/results
+
+# Helm
+helm/charts/
+helm/*.tgz
+helm/*.lock

@@ -82,7 +82,9 @@ Local testing environment for Apache Pulsar with Kubernetes (Minikube) and compr
 - **Testing Tools**: Go 1.25.1+ with pulsar-client-go, tview terminal UI
 
 ### Key Files
-- `helm/values-minikube.yaml` - Kubernetes deployment configuration
+- `helm/` - Self-contained Helm chart for Pulsar deployment
+  - `helm/Chart.yaml` - Chart definition with Pulsar dependency
+  - `helm/values.yaml` - Minikube-optimized configuration
 - `monitoring/` - Observability configurations (Prometheus + Grafana)
 - `test-tools/` - Go-based performance testing tools
   - `test-tools/cmd/producer/` - Producer CLI application
@@ -95,8 +97,11 @@ Local testing environment for Apache Pulsar with Kubernetes (Minikube) and compr
 
 #### Infrastructure
 ```bash
+# Download Helm dependencies (one-time)
+cd helm && helm dependency update && cd ..
+
 # Deploy to Minikube
-helm install pulsar apache/pulsar -f helm/values-minikube.yaml
+helm install pulsar ./helm --namespace pulsar --create-namespace
 
 # Access Grafana dashboards
 kubectl port-forward svc/grafana 3000:3000

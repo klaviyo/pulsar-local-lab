@@ -17,6 +17,121 @@ Go-based performance testing tools with interactive terminal UIs for Apache Puls
 - Go 1.25.1 or higher
 - Apache Pulsar cluster (local or remote)
 - Terminal with ANSI color support
+- For local deployment:
+  - [Minikube](https://minikube.sigs.k8s.io/docs/start/) 1.30+
+  - [kubectl](https://kubernetes.io/docs/tasks/tools/) 1.27+
+  - [Helm](https://helm.sh/docs/intro/install/) 3.12+
+
+## Setting Up Local Pulsar with Minikube
+
+This section covers deploying Apache Pulsar to a local Minikube cluster for testing.
+
+### 1. Start Minikube
+
+Start Minikube with sufficient resources for Pulsar:
+
+```bash
+# Start Minikube with recommended resources
+minikube start --cpus=4 --memory=8192 --disk-size=20g
+
+# Verify Minikube is running
+minikube status
+```
+
+**Note**: Pulsar requires significant resources. Adjust `--cpus` and `--memory` based on your system capabilities. Minimum recommended: 4 CPUs, 8GB RAM.
+
+### 2. Build Helm Chart Dependencies
+
+The chart uses the Apache Pulsar chart as a dependency. Download it first:
+
+```bash
+# From the project root directory (pulsar-local-lab/)
+cd helm
+
+# Download chart dependencies
+helm dependency update
+
+# Return to project root
+cd ..
+```
+
+This creates a `helm/charts/` directory with the Pulsar chart. You only need to run this once (or when updating Pulsar versions).
+
+### 3. Deploy Pulsar
+
+Deploy Pulsar using the local Helm chart:
+
+```bash
+# From the project root directory (pulsar-local-lab/)
+helm install pulsar ./helm \
+  --namespace pulsar \
+  --create-namespace
+
+# Wait for all pods to be ready (this may take 3-5 minutes)
+kubectl wait --for=condition=ready pod -l app=pulsar --namespace pulsar --timeout=300s
+```
+
+**Chart structure:**
+- `helm/Chart.yaml` - Chart definition with Pulsar dependency
+- `helm/values.yaml` - Minikube-optimized configuration:
+  - Single replica deployments (zookeeper, bookkeeper, broker, proxy)
+  - Disabled persistence (uses emptyDir for faster local testing)
+  - Disabled pod anti-affinity (allows running on single-node Minikube)
+  - Reduced memory settings for local development
+  - Pulsar Manager UI enabled
+
+### 4. Verify Deployment
+
+Check that all Pulsar components are running:
+
+```bash
+# Check pod status
+kubectl get pods --namespace pulsar
+
+# Check services
+kubectl get svc --namespace pulsar
+
+# View logs if needed
+kubectl logs -l component=broker --namespace pulsar --tail=50
+```
+
+All pods should show `Running` status with `1/1` or `2/2` ready containers.
+
+### 5. Applying Configuration Changes
+
+When you need to modify Pulsar configuration:
+
+```bash
+# Edit the values file
+vim helm/values.yaml
+
+# Apply changes with Helm upgrade (from project root)
+helm upgrade pulsar ./helm \
+  --namespace pulsar
+
+# Watch pods restart with new configuration
+kubectl get pods --namespace pulsar -w
+```
+
+**Common changes in `values.yaml`:**
+- Adjust replica counts: `pulsar.broker.replicaCount`, `pulsar.bookkeeper.replicaCount`
+- Modify resource limits: Add `resources` sections under component configs
+- Change configuration: Update `configData` under each component
+- Enable/disable components: Modify `pulsar.components` section
+
+**Note:** All values must be under the `pulsar:` key since it's a subchart dependency.
+
+### 6. Uninstall Pulsar
+
+To remove the Pulsar deployment:
+
+```bash
+# Uninstall Pulsar
+helm uninstall pulsar --namespace pulsar
+
+# Optional: Delete the namespace
+kubectl delete namespace pulsar
+```
 
 ## Connecting to Pulsar in Minikube
 

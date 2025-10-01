@@ -115,3 +115,26 @@ func (pw *ProducerWorker) Stop() error {
 func (pw *ProducerWorker) ID() int {
 	return pw.id
 }
+
+// UpdateRateLimiter updates the rate limiter with a new rate per second
+// If rate is 0, rate limiting is disabled by setting limiter to nil
+// If limiter doesn't exist and rate > 0, a new limiter is created
+func (pw *ProducerWorker) UpdateRateLimiter(ratePerSecond int) {
+	if ratePerSecond <= 0 {
+		// Disable rate limiting
+		if pw.limiter != nil {
+			pw.limiter.Stop()
+			pw.limiter = nil
+		}
+		return
+	}
+
+	// Update or create limiter
+	if pw.limiter != nil {
+		// Update existing limiter
+		pw.limiter.SetRate(ratePerSecond)
+	} else {
+		// Create new limiter
+		pw.limiter = ratelimit.NewLimiter(ratePerSecond)
+	}
+}

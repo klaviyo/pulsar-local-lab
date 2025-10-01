@@ -223,15 +223,38 @@ func (p *Pool) GetConfig() *config.Config {
 	return p.config
 }
 
-// UpdateTargetRate updates the target throughput rate
+// UpdateTargetRate updates the target throughput rate and propagates to all workers
 func (p *Pool) UpdateTargetRate(rate int) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
+
+	// Update config
 	p.config.Performance.TargetThroughput = rate
 	if rate > 0 {
 		p.config.Performance.RateLimitEnabled = true
 	} else {
 		p.config.Performance.RateLimitEnabled = false
+	}
+
+	// Calculate per-worker rate
+	numWorkers := len(p.workers)
+	if numWorkers == 0 {
+		return
+	}
+
+	ratePerWorker := 0
+	if rate > 0 {
+		ratePerWorker = rate / numWorkers
+		if ratePerWorker == 0 {
+			ratePerWorker = 1 // Ensure at least 1 msg/s per worker
+		}
+	}
+
+	// Update all producer workers
+	for _, worker := range p.workers {
+		if pw, ok := worker.(*ProducerWorker); ok {
+			pw.UpdateRateLimiter(ratePerWorker)
+		}
 	}
 }
 
