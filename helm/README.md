@@ -87,3 +87,44 @@ ls -la charts/
 ### Values not applying
 Remember that all values must be under `pulsar:` key when using this chart since Pulsar is a subchart dependency.
 
+## dealing with topics
+
+You have several options to delete a topic from Pulsar:
+
+  1. Using pulsar-admin CLI (inside Pulsar pod)
+
+  # Exec into broker pod
+  kubectl exec -it pulsar-broker-0 -n pulsar -- bash
+
+  # Delete non-partitioned topic
+  bin/pulsar-admin topics delete persistent://public/default/perf-test
+
+  # Delete partitioned topic (deletes all partitions)
+  bin/pulsar-admin topics delete-partitioned-topic persistent://public/default/perf-test
+
+  2. Using kubectl exec (one-liner from your machine)
+
+  # Delete non-partitioned topic
+  kubectl exec -n pulsar pulsar-broker-0 -- bin/pulsar-admin topics delete persistent://public/default/perf-test
+
+  # Delete partitioned topic
+  kubectl exec -n pulsar pulsar-broker-0 -- bin/pulsar-admin topics delete-partitioned-topic persistent://public/default/perf-test
+
+  3. Using HTTP Admin API (if you have port-forward setup)
+
+  # Port forward admin API first
+  kubectl port-forward -n pulsar svc/pulsar-broker 8080:8080
+
+  # Delete partitioned topic
+  curl -X DELETE http://localhost:8080/admin/v2/persistent/public/default/perf-test/partitions
+
+  # Delete non-partitioned topic  
+  curl -X DELETE http://localhost:8080/admin/v2/persistent/public/default/perf-test
+
+  4. List existing topics first
+
+  # List all topics in namespace
+  kubectl exec -n pulsar pulsar-broker-0 -- bin/pulsar-admin topics list public/default
+
+  # Get topic stats to see if it's partitioned
+  kubectl exec -n pulsar pulsar-broker-0 -- bin/pulsar-admin topics stats persistent://public/default/perf-test

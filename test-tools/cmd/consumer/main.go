@@ -28,6 +28,7 @@ var (
 	profile          = flag.String("profile", "default", "Performance test profile (default, low-latency, high-throughput, burst, sustained)")
 	serviceURL       = flag.String("service-url", "", "Pulsar broker service URL (overrides config)")
 	topic            = flag.String("topic", "", "Pulsar topic name (overrides config)")
+	partitions       = flag.Int("partitions", -1, "Number of topic partitions (overrides config, -1=use config, 0=non-partitioned)")
 	subscription     = flag.String("subscription", "", "Subscription name (overrides config)")
 	subscriptionType = flag.String("subscription-type", "", "Subscription type: Exclusive, Shared, Failover, KeyShared (overrides config)")
 	numWorkers       = flag.Int("workers", 0, "Number of consumer workers (overrides config, 0=use config)")
@@ -164,6 +165,11 @@ func applyOverrides(cfg *config.Config) {
 		cfg.Pulsar.Topic = *topic
 	}
 
+	if *partitions >= 0 {
+		log.Printf("Overriding topic partitions: %d", *partitions)
+		cfg.Pulsar.TopicPartitions = *partitions
+	}
+
 	if *subscription != "" {
 		log.Printf("Overriding subscription: %s", *subscription)
 		cfg.Consumer.SubscriptionName = *subscription
@@ -268,6 +274,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  %s --subscription-type Shared --workers 10\n\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "  # Custom subscription name\n")
 	fmt.Fprintf(os.Stderr, "  %s --subscription my-consumer-group\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  # Consume from 4-partition topic\n")
+	fmt.Fprintf(os.Stderr, "  %s --partitions 4 --workers 4\n\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "PROFILES:\n")
 	for _, p := range config.GetAvailableProfiles() {
 		fmt.Fprintf(os.Stderr, "  %-18s %s\n", p, config.GetProfileDescription(p))

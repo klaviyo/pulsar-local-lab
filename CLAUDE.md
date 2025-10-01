@@ -79,7 +79,8 @@ Local testing environment for Apache Pulsar with Kubernetes (Minikube) and compr
 - **Orchestration**: Kubernetes (Minikube)
 - **Message Broker**: Apache Pulsar
 - **Monitoring**: Prometheus + Grafana
-- **Testing Tools**: Go 1.25.1+ with pulsar-client-go, tview terminal UI
+- **Admin UI**: Pulsar Manager (web-based admin console)
+- **Testing Tools**: Go 1.25.1+ with pulsar-client-go, pulsar-admin-go, tview terminal UI
 
 ### Key Files
 - `helm/` - Self-contained Helm chart for Pulsar deployment
@@ -104,7 +105,13 @@ cd helm && helm dependency update && cd ..
 helm install pulsar ./helm --namespace pulsar --create-namespace
 
 # Access Grafana dashboards
-kubectl port-forward svc/grafana 3000:3000
+kubectl port-forward -n pulsar svc/grafana 3000:3000
+
+# Access Pulsar Manager UI (web-based admin console)
+kubectl port-forward -n pulsar svc/pulsar-pulsar-manager 9527:9527
+# Then open http://localhost:9527
+# Get credentials: ./scripts/get-manager-credentials.sh
+# Or use the helper script: ./scripts/access-ui.sh
 ```
 
 #### Test Tools

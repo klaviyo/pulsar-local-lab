@@ -8,6 +8,7 @@ import (
 
 	"github.com/pulsar-local-lab/perf-test/internal/config"
 	"github.com/pulsar-local-lab/perf-test/internal/metrics"
+	"github.com/pulsar-local-lab/perf-test/internal/pulsar"
 )
 
 // Pool represents a pool of workers
@@ -29,6 +30,11 @@ type Worker interface {
 
 // NewProducerPool creates a new producer worker pool
 func NewProducerPool(ctx context.Context, cfg *config.Config) (*Pool, error) {
+	// Ensure topic exists with correct partition configuration
+	if err := pulsar.EnsureTopic(cfg); err != nil {
+		return nil, fmt.Errorf("failed to ensure topic exists: %w", err)
+	}
+
 	collector := metrics.NewCollector(cfg.Metrics.HistogramBuckets)
 
 	pool := &Pool{
@@ -58,6 +64,11 @@ func NewProducerPool(ctx context.Context, cfg *config.Config) (*Pool, error) {
 
 // NewConsumerPool creates a new consumer worker pool
 func NewConsumerPool(ctx context.Context, cfg *config.Config) (*Pool, error) {
+	// Ensure topic exists with correct partition configuration
+	if err := pulsar.EnsureTopic(cfg); err != nil {
+		return nil, fmt.Errorf("failed to ensure topic exists: %w", err)
+	}
+
 	collector := metrics.NewCollector(cfg.Metrics.HistogramBuckets)
 
 	pool := &Pool{

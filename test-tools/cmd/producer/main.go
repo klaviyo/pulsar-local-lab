@@ -28,6 +28,7 @@ var (
 	profile    = flag.String("profile", "default", "Performance test profile (default, low-latency, high-throughput, burst, sustained)")
 	serviceURL = flag.String("service-url", "", "Pulsar broker service URL (overrides config)")
 	topic      = flag.String("topic", "", "Pulsar topic name (overrides config)")
+	partitions = flag.Int("partitions", -1, "Number of topic partitions (overrides config, -1=use config, 0=non-partitioned)")
 	numWorkers = flag.Int("workers", 0, "Number of producer workers (overrides config, 0=use config)")
 	showHelp   = flag.Bool("help", false, "Show help message")
 	listProfs  = flag.Bool("list-profiles", false, "List available performance profiles")
@@ -162,6 +163,11 @@ func applyOverrides(cfg *config.Config) {
 		cfg.Pulsar.Topic = *topic
 	}
 
+	if *partitions >= 0 {
+		log.Printf("Overriding topic partitions: %d", *partitions)
+		cfg.Pulsar.TopicPartitions = *partitions
+	}
+
 	if *numWorkers > 0 {
 		log.Printf("Overriding worker count: %d", *numWorkers)
 		cfg.Producer.NumProducers = *numWorkers
@@ -244,6 +250,8 @@ func printUsage() {
 	fmt.Fprintf(os.Stderr, "  %s --service-url pulsar://localhost:6650 --topic my-test-topic\n\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "  # Use 10 workers with custom topic\n")
 	fmt.Fprintf(os.Stderr, "  %s --workers 10 --topic perf-test-topic\n\n", os.Args[0])
+	fmt.Fprintf(os.Stderr, "  # Test with 4 partitions\n")
+	fmt.Fprintf(os.Stderr, "  %s --partitions 4 --workers 4\n\n", os.Args[0])
 	fmt.Fprintf(os.Stderr, "PROFILES:\n")
 	for _, p := range config.GetAvailableProfiles() {
 		fmt.Fprintf(os.Stderr, "  %-18s %s\n", p, config.GetProfileDescription(p))

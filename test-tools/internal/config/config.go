@@ -92,6 +92,9 @@ type PulsarConfig struct {
 
 	// Topic is the Pulsar topic name (e.g., persistent://public/default/perf-test)
 	Topic string `json:"topic"`
+
+	// TopicPartitions is the number of partitions for the topic (0 = non-partitioned)
+	TopicPartitions int `json:"topic_partitions"`
 }
 
 // ProducerConfig contains producer-specific settings.
@@ -222,6 +225,11 @@ func LoadConfigFromEnv() (*Config, error) {
 	if v := os.Getenv("PULSAR_TOPIC"); v != "" {
 		cfg.Pulsar.Topic = v
 	}
+	if v := os.Getenv("PULSAR_TOPIC_PARTITIONS"); v != "" {
+		if val, err := strconv.Atoi(v); err == nil {
+			cfg.Pulsar.TopicPartitions = val
+		}
+	}
 
 	// Producer configuration
 	if v := os.Getenv("PRODUCER_NUM_WORKERS"); v != "" {
@@ -290,9 +298,10 @@ func DefaultConfig(profile string) *Config {
 	// Base defaults
 	cfg := &Config{
 		Pulsar: PulsarConfig{
-			ServiceURL: "pulsar://localhost:6650",
-			AdminURL:   "http://localhost:8080",
-			Topic:      "persistent://public/default/perf-test",
+			ServiceURL:      "pulsar://localhost:6650",
+			AdminURL:        "http://localhost:8080",
+			Topic:           "persistent://public/default/perf-test",
+			TopicPartitions: 0, // non-partitioned by default
 		},
 		Producer: ProducerConfig{
 			NumProducers:    1,
@@ -341,6 +350,9 @@ func (c *Config) Validate() error {
 	}
 	if c.Pulsar.Topic == "" {
 		return fmt.Errorf("pulsar topic is required")
+	}
+	if c.Pulsar.TopicPartitions < 0 {
+		return fmt.Errorf("topic partitions must be non-negative, got %d", c.Pulsar.TopicPartitions)
 	}
 
 	// Validate producer configuration
