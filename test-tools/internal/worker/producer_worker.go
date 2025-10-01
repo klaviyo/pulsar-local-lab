@@ -17,7 +17,8 @@ import (
 type ProducerWorker struct {
 	id         int
 	client     *pulsar.ProducerClient
-	pool       *generator.PayloadPool
+	payloadPool *generator.PayloadPool
+	workerPool *Pool
 	collector  *metrics.Collector
 	limiter    *ratelimit.Limiter
 	config     *config.Config
@@ -46,12 +47,12 @@ func NewProducerWorker(id int, cfg *config.Config, collector *metrics.Collector)
 	}
 
 	return &ProducerWorker{
-		id:        id,
-		client:    client,
-		pool:      pool,
-		collector: collector,
-		limiter:   limiter,
-		config:    cfg,
+		id:          id,
+		client:      client,
+		payloadPool: pool,
+		collector:   collector,
+		limiter:     limiter,
+		config:      cfg,
 	}, nil
 }
 
@@ -96,8 +97,14 @@ func (pw *ProducerWorker) Start(ctx context.Context) error {
 			}
 		}
 
+		// Check if paused - sleep briefly and continue without sending
+		if pw.workerPool != nil && pw.workerPool.IsPaused() {
+			time.Sleep(100 * time.Millisecond)
+			continue
+		}
+
 		// Get payload buffer from pool and generate random data
-		payload := pw.pool.Get()
+		payload := pw.payloadPool.Get()
 		generator.GenerateRandomPayloadTo(payload)
 
 		// Send message and measure latency
@@ -106,7 +113,7 @@ func (pw *ProducerWorker) Start(ctx context.Context) error {
 		sendLatency := time.Since(sendStart)
 
 		// Return buffer to pool
-		pw.pool.Put(payload)
+		pw.payloadPool.Put(payload)
 
 		if err != nil {
 			// Check if context was cancelled (not a real failure)
@@ -166,6 +173,11 @@ func (pw *ProducerWorker) UpdateRateLimiter(ratePerSecond int) {
 func (pw *ProducerWorker) SetContext(ctx context.Context, cancel context.CancelFunc) {
 	pw.workerCtx = ctx
 	pw.cancelFunc = cancel
+}
+
+// SetPool sets the worker pool reference for pause/resume functionality
+func (pw *ProducerWorker) SetPool(pool *Pool) {
+	pw.workerPool = pool
 }
 
 // CancelContext cancels the worker's context, signaling it to stop

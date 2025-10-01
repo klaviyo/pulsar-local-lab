@@ -350,12 +350,14 @@ func NewStatusBar() *StatusBar {
 }
 
 // Update updates the status bar
-func (s *StatusBar) Update(running bool, workers int, elapsed time.Duration, shortcuts string) {
+func (s *StatusBar) Update(running bool, paused bool, workers int, elapsed time.Duration, shortcuts string) {
 	s.Clear()
 
 	statusText := "[green]RUNNING[-]"
 	if !running {
 		statusText = "[red]STOPPED[-]"
+	} else if paused {
+		statusText = "[yellow]PAUSED[-]"
 	}
 
 	fmt.Fprintf(s, " %s | [cyan]Workers:[-] %d | [cyan]Elapsed:[-] %s | [yellow]%s[-]",

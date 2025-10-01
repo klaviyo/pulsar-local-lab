@@ -14,13 +14,16 @@ A development environment for learning and experimenting with Apache Pulsar, fea
 
 ### Prerequisites
 
-- Minikube running
+- Minikube (or proper k8s) running
 - Helm 3.x
 - kubectl
 - Go 1.25.1+ (for test tools)
 
 ### 1. Deploy Pulsar Cluster
 
+For detailed deployment instructions and configuration options, see **[helm/README.md](helm/README.md)**.
+
+**Quick deploy:**
 ```bash
 # Download Helm chart dependencies (one-time)
 cd helm && helm dependency update && cd ..
@@ -28,6 +31,8 @@ cd helm && helm dependency update && cd ..
 # Deploy to Minikube
 helm install pulsar ./helm --namespace pulsar --create-namespace
 ```
+
+The Helm chart includes Minikube-optimized configuration with Pulsar Manager UI enabled by default.
 
 ### 2. Access Web UIs
 
@@ -130,7 +135,13 @@ Run `./bin/producer --list-profiles` or `./bin/consumer --list-profiles` for det
 
 ### Helm Values
 
-Main configuration in `helm/values.yaml`:
+For Pulsar cluster configuration, see **[helm/README.md](helm/README.md)** for:
+- Customizing `values.yaml`
+- Creating custom configuration overrides
+- Updating Pulsar versions
+- Troubleshooting deployment issues
+
+**Default configuration** (`helm/values.yaml`):
 - Minikube-optimized resource limits
 - Single replica for development
 - No persistence (uses emptyDir)
@@ -181,7 +192,11 @@ See `test-tools/config.example.json` for full configuration options.
 
 ### Managing Topics
 
-#### Via CLI (inside broker pod)
+For detailed topic management commands and examples, see **[helm/README.md - Dealing with Topics](helm/README.md#dealing-with-topics)**.
+
+#### Quick Commands
+
+**Via CLI (inside broker pod):**
 ```bash
 # Delete partitioned topic
 kubectl exec -n pulsar pulsar-broker-0 -- \
@@ -193,7 +208,7 @@ kubectl exec -n pulsar pulsar-broker-0 -- \
   bin/pulsar-admin topics list public/default
 ```
 
-#### Via Pulsar Manager UI
+**Via Pulsar Manager UI:**
 1. Access http://localhost:9527 (run `./scripts/access-ui.sh`)
 2. Navigate to Topics → Manage
 3. Use web interface for create/delete/stats

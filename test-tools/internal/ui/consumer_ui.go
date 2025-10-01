@@ -232,10 +232,10 @@ func (ui *ConsumerUI) handleInput(event *tcell.EventKey) *tcell.EventKey {
 
 // togglePause toggles worker pool pause/resume
 func (ui *ConsumerUI) togglePause() {
-	if ui.pool.IsRunning() {
-		ui.pool.Stop()
+	if ui.pool.IsPaused() {
+		ui.pool.Resume()
 	} else {
-		ui.pool.Start(ui.ctx)
+		ui.pool.Pause()
 	}
 }
 
@@ -363,6 +363,7 @@ func (ui *ConsumerUI) updateLoop() {
 				shortcuts := "↑↓←→ Navigate  [Q]uit  [P]ause  [R]eset  [L]ogs  [H]elp"
 				ui.statusBar.Update(
 					ui.pool.IsRunning(),
+					ui.pool.IsPaused(),
 					ui.pool.WorkerCount(),
 					snapshot.Elapsed,
 					shortcuts,

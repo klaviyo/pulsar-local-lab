@@ -19,6 +19,7 @@ type Pool struct {
 	wg        sync.WaitGroup
 	mu        sync.RWMutex
 	running   bool
+	paused    bool
 }
 
 // Worker interface for producer and consumer workers
@@ -55,6 +56,9 @@ func NewProducerPool(ctx context.Context, cfg *config.Config) (*Pool, error) {
 		// Set per-worker context
 		workerCtx, cancelFunc := context.WithCancel(ctx)
 		worker.SetContext(workerCtx, cancelFunc)
+
+		// Set pool reference for pause/resume
+		worker.SetPool(pool)
 
 		pool.workers = append(pool.workers, worker)
 	}
@@ -169,6 +173,27 @@ func (p *Pool) IsRunning() bool {
 	return p.running
 }
 
+// IsPaused returns whether the pool is paused
+func (p *Pool) IsPaused() bool {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	return p.paused
+}
+
+// Pause pauses all workers without stopping them
+func (p *Pool) Pause() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.paused = true
+}
+
+// Resume resumes all paused workers
+func (p *Pool) Resume() {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	p.paused = false
+}
+
 // WorkerCount returns the number of workers
 func (p *Pool) WorkerCount() int {
 	p.mu.RLock()
@@ -191,6 +216,8 @@ func (p *Pool) AddWorker(ctx context.Context, workerFactory func(int) (Worker, e
 	if pw, ok := worker.(*ProducerWorker); ok {
 		workerCtx, cancelFunc := context.WithCancel(ctx)
 		pw.SetContext(workerCtx, cancelFunc)
+		// Set pool reference for pause/resume
+		pw.SetPool(p)
 	}
 
 	p.workers = append(p.workers, worker)
@@ -403,6 +430,9 @@ func (p *Pool) RestartWorkers(ctx context.Context) error {
 		// Set per-worker context
 		workerCtx, cancelFunc := context.WithCancel(ctx)
 		worker.SetContext(workerCtx, cancelFunc)
+
+		// Set pool reference for pause/resume
+		worker.SetPool(p)
 
 		p.mu.Lock()
 		p.workers = append(p.workers, worker)
