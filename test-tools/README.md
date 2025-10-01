@@ -2,6 +2,8 @@
 
 Go-based performance testing tools with interactive terminal UIs for Apache Pulsar.
 
+> **📖 Full Documentation**: See the [main README](../README.md) for complete setup instructions including Pulsar deployment, monitoring, and troubleshooting.
+
 ## Features
 
 - **Producer Tool**: High-performance message producer with configurable concurrency and batching
@@ -10,271 +12,155 @@ Go-based performance testing tools with interactive terminal UIs for Apache Puls
 - **Metrics Collection**: Latency histograms, throughput tracking, and percentile calculations
 - **Rate Limiting**: Token bucket-based rate limiting for controlled load testing
 - **Performance Profiles**: Pre-configured profiles for different testing scenarios
+- **Dynamic Partitioning**: Create and test topics with different partition sizes
 - **Configurable Settings**: JSON-based configuration with CLI overrides
 
-## Prerequisites
+## Quick Start
 
-- Go 1.25.1 or higher
-- Apache Pulsar cluster (local or remote)
-- Terminal with ANSI color support
-- For local deployment:
-  - [Minikube](https://minikube.sigs.k8s.io/docs/start/) 1.30+
-  - [kubectl](https://kubernetes.io/docs/tasks/tools/) 1.27+
-  - [Helm](https://helm.sh/docs/intro/install/) 3.12+
+**Prerequisites**: Go 1.25.1+, Apache Pulsar running (see [main README](../README.md) for deployment)
 
-## Setting Up Local Pulsar with Minikube
-
-This section covers deploying Apache Pulsar to a local Minikube cluster for testing.
-
-### 1. Start Minikube
-
-Start Minikube with sufficient resources for Pulsar:
-
-```bash
-# Start Minikube with recommended resources
-minikube start --cpus=4 --memory=8192 --disk-size=20g
-
-# Verify Minikube is running
-minikube status
-```
-
-**Note**: Pulsar requires significant resources. Adjust `--cpus` and `--memory` based on your system capabilities. Minimum recommended: 4 CPUs, 8GB RAM.
-
-### 2. Build Helm Chart Dependencies
-
-The chart uses the Apache Pulsar chart as a dependency. Download it first:
-
-```bash
-# From the project root directory (pulsar-local-lab/)
-cd helm
-
-# Download chart dependencies
-helm dependency update
-
-# Return to project root
-cd ..
-```
-
-This creates a `helm/charts/` directory with the Pulsar chart. You only need to run this once (or when updating Pulsar versions).
-
-### 3. Deploy Pulsar
-
-Deploy Pulsar using the local Helm chart:
-
-```bash
-# From the project root directory (pulsar-local-lab/)
-helm install pulsar ./helm \
-  --namespace pulsar \
-  --create-namespace
-
-# Wait for all pods to be ready (this may take 3-5 minutes)
-kubectl wait --for=condition=ready pod -l app=pulsar --namespace pulsar --timeout=300s
-```
-
-**Chart structure:**
-- `helm/Chart.yaml` - Chart definition with Pulsar dependency
-- `helm/values.yaml` - Minikube-optimized configuration:
-  - Single replica deployments (zookeeper, bookkeeper, broker, proxy)
-  - Disabled persistence (uses emptyDir for faster local testing)
-  - Disabled pod anti-affinity (allows running on single-node Minikube)
-  - Reduced memory settings for local development
-  - Pulsar Manager UI enabled
-
-### 4. Verify Deployment
-
-Check that all Pulsar components are running:
-
-```bash
-# Check pod status
-kubectl get pods --namespace pulsar
-
-# Check services
-kubectl get svc --namespace pulsar
-
-# View logs if needed
-kubectl logs -l component=broker --namespace pulsar --tail=50
-```
-
-All pods should show `Running` status with `1/1` or `2/2` ready containers.
-
-### 5. Applying Configuration Changes
-
-When you need to modify Pulsar configuration:
-
-```bash
-# Edit the values file
-vim helm/values.yaml
-
-# Apply changes with Helm upgrade (from project root)
-helm upgrade pulsar ./helm \
-  --namespace pulsar
-
-# Watch pods restart with new configuration
-kubectl get pods --namespace pulsar -w
-```
-
-**Common changes in `values.yaml`:**
-- Adjust replica counts: `pulsar.broker.replicaCount`, `pulsar.bookkeeper.replicaCount`
-- Modify resource limits: Add `resources` sections under component configs
-- Change configuration: Update `configData` under each component
-- Enable/disable components: Modify `pulsar.components` section
-
-**Note:** All values must be under the `pulsar:` key since it's a subchart dependency.
-
-### 6. Uninstall Pulsar
-
-To remove the Pulsar deployment:
-
-```bash
-# Uninstall Pulsar
-helm uninstall pulsar --namespace pulsar
-
-# Optional: Delete the namespace
-kubectl delete namespace pulsar
-```
-
-## Connecting to Pulsar in Minikube
-
-If you're running Pulsar in Minikube, use port-forwarding to access it from your local machine:
-
-```bash
-# Forward Pulsar broker port (run in separate terminal and keep running)
-kubectl port-forward svc/pulsar-proxy 6650:6650
-
-# Forward admin API port (optional, for management - maps service port 80 to localhost:8080)
-kubectl port-forward svc/pulsar-proxy 8080:80
-```
-
-**Important**: Keep the port-forward command running in a separate terminal window.
-
-Then connect using localhost:
-```bash
-./bin/producer --service-url pulsar://localhost:6650
-./bin/consumer --service-url pulsar://localhost:6650
-```
-
-## Installation
-
-### Clone the repository
-
-```bash
-git clone https://github.com/pulsar-local-lab/perf-test.git
-cd perf-test/test-tools
-```
-
-### Install dependencies
-
-```bash
-make deps
-```
-
-### Build binaries
+### Build
 
 ```bash
 make build
 ```
 
-This will create two binaries in the `bin/` directory:
+### Run
+
+```bash
+# Producer with default settings
+./bin/producer
+
+# Consumer with high-throughput profile
+./bin/consumer --profile high-throughput
+
+# Test with 4 partitions
+./bin/producer --partitions 4 --workers 4
+```
+
+## Build and Installation
+
+```bash
+# Install dependencies
+make deps
+
+# Build both tools
+make build
+```
+
+This creates:
 - `bin/producer` - Producer testing tool
 - `bin/consumer` - Consumer testing tool
 
-## Usage
+## Usage Examples
 
-### Producer
-
-Run the producer with default settings:
+### Basic Usage
 
 ```bash
-make run-producer
-```
-
-Or run the binary directly:
-
-```bash
+# Producer with defaults
 ./bin/producer
-```
 
-With custom configuration:
+# Consumer with defaults
+./bin/consumer
 
-```bash
-./bin/producer -config config.json -profile high-throughput
-```
-
-### Consumer
-
-Run the consumer with default settings:
-
-```bash
+# Or use make targets
+make run-producer
 make run-consumer
 ```
 
-Or run the binary directly:
+### With Profiles
 
 ```bash
-./bin/consumer
+./bin/producer --profile high-throughput
+./bin/consumer --profile low-latency
 ```
 
-With custom configuration:
+### Testing Partitioned Topics
 
 ```bash
-./bin/consumer -config config.json -profile low-latency
+# Create and test 4-partition topic
+./bin/producer --partitions 4 --workers 4
+
+# Consumer for same topic
+./bin/consumer --partitions 4 --workers 4 --subscription-type Shared
+```
+
+### Custom Configuration
+
+```bash
+./bin/producer --config config.json --profile sustained
+./bin/consumer --config config.json --subscription my-sub
+```
+
+### Command-Line Overrides
+
+```bash
+./bin/producer \
+  --service-url pulsar://localhost:6650 \
+  --topic persistent://public/default/test \
+  --partitions 8 \
+  --workers 8
+
+./bin/consumer \
+  --topic persistent://public/default/test \
+  --subscription-type KeyShared \
+  --workers 8
 ```
 
 ## Performance Profiles
 
-The tools include several pre-configured performance profiles:
+Pre-configured profiles for different testing scenarios:
 
-| Profile | Description | Use Case |
-|---------|-------------|----------|
-| `default` | Balanced configuration | General testing |
-| `low-latency` | Optimized for minimal latency | Real-time applications |
-| `high-throughput` | Optimized for maximum throughput | Batch processing |
-| `burst` | Simulates bursty traffic | Peak load testing |
-| `sustained` | Long-running sustained load | Endurance testing |
+| Profile | Workers | Batching | Target Use Case |
+|---------|---------|----------|-----------------|
+| `default` | 1 | Enabled | General testing |
+| `low-latency` | 3 | Minimal | Real-time applications |
+| `high-throughput` | 10 | Large batches | Batch processing |
+| `burst` | 5 | Enabled | Peak load testing |
+| `sustained` | 8 | Optimized | Endurance testing |
+
+List all profiles: `./bin/producer --list-profiles`
 
 ## Configuration
 
-### Configuration File
+### Configuration Options
 
-Create a `config.json` file to customize settings:
+See `config.example.json` for a complete configuration template.
 
-```json
-{
-  "pulsar": {
-    "service_url": "pulsar://localhost:6650",
-    "topic": "persistent://public/default/perf-test"
-  },
-  "producer": {
-    "num_producers": 5,
-    "message_size": 1024,
-    "batching_enabled": true,
-    "batching_max_size": 1000,
-    "compression_type": "LZ4"
-  },
-  "consumer": {
-    "num_consumers": 5,
-    "subscription_name": "perf-test-sub",
-    "subscription_type": "Shared",
-    "receiver_queue_size": 1000
-  },
-  "performance": {
-    "target_throughput": 10000,
-    "duration": "5m",
-    "warmup": "5s",
-    "rate_limit_enabled": true
-  },
-  "metrics": {
-    "collection_interval": "1s",
-    "export_enabled": true,
-    "export_path": "./metrics"
-  }
-}
+**Key settings:**
+- `pulsar.topic_partitions` - Number of topic partitions (0 = non-partitioned)
+- `producer.num_producers` - Concurrent producer workers
+- `consumer.subscription_type` - Exclusive, Shared, Failover, or KeyShared
+- `performance.target_throughput` - Messages per second (0 = unlimited)
+- `metrics.export_enabled` - Save metrics to JSON files
+
+### Environment Variables
+
+```bash
+export PULSAR_SERVICE_URL=pulsar://localhost:6650
+export PULSAR_TOPIC=persistent://public/default/test
+export PULSAR_TOPIC_PARTITIONS=4
+export PRODUCER_NUM_WORKERS=5
+export CONSUMER_SUBSCRIPTION_TYPE=Shared
 ```
 
-### Command-Line Flags
+### CLI Flags Reference
 
-- `-config <path>` - Path to configuration file
-- `-profile <name>` - Performance profile to use (default, low-latency, high-throughput, burst, sustained)
+Common flags for both tools:
+- `--config <path>` - JSON configuration file
+- `--profile <name>` - Performance profile
+- `--service-url <url>` - Pulsar broker URL
+- `--topic <name>` - Topic name
+- `--partitions <n>` - Number of partitions (-1=use config, 0=non-partitioned)
+- `--workers <n>` - Number of workers
+
+Producer-specific:
+- `--help` - Show all options
+
+Consumer-specific:
+- `--subscription <name>` - Subscription name
+- `--subscription-type <type>` - Subscription type
+- `--help` - Show all options
 
 ## Interactive Controls
 
@@ -378,46 +264,54 @@ make vet
 
 ### Connection Issues
 
-If you cannot connect to Pulsar:
+**Problem**: Cannot connect to Pulsar
 
-1. Verify Pulsar is running: `docker ps` or check your Pulsar cluster status
-2. Check the service URL in your configuration
-3. Ensure the topic exists or that you have permissions to create it
+**Solutions:**
+1. Verify Pulsar is running: `kubectl get pods -n pulsar`
+2. Check port forwarding is active: `kubectl port-forward -n pulsar svc/pulsar-broker 6650:6650`
+3. Verify service URL in configuration
+
+### Topic Creation Failures
+
+**Problem**: "Failed to ensure topic exists"
+
+**Solutions:**
+1. Check Pulsar Manager is running: `kubectl get pods -n pulsar | grep manager`
+2. Verify admin API access: `kubectl port-forward -n pulsar svc/pulsar-broker 8080:8080`
+3. Check topic permissions and namespace configuration
 
 ### Performance Issues
 
-If you're not achieving expected throughput:
+**Problem**: Low throughput
 
-1. Try the `high-throughput` profile
-2. Increase the number of workers (`num_producers` or `num_consumers`)
-3. Enable batching and adjust batch size
-4. Check your network latency to the Pulsar cluster
-5. Monitor Pulsar broker metrics
+**Solutions:**
+1. Use `--profile high-throughput`
+2. Increase workers: `--workers 10`
+3. For partitioned topics, match workers to partitions
+4. Check network latency and broker metrics in Grafana
 
-### Memory Issues
+See the [main README](../README.md) for more troubleshooting guidance.
 
-If you encounter memory issues:
+## Development
 
-1. Reduce the number of concurrent workers
-2. Decrease the receiver queue size
-3. Reduce the message size
-4. Disable metrics export if not needed
+### Running Tests
 
-## License
+```bash
+make test              # Run all tests
+make test-coverage     # With coverage report
+make bench             # Run benchmarks
+```
 
-This project is part of the Pulsar Local Lab toolkit.
+### Code Quality
 
-## Contributing
+```bash
+make fmt               # Format code
+make vet               # Run go vet
+make lint              # Run golangci-lint
+```
 
-Contributions are welcome! Please ensure:
+## Related Documentation
 
-1. Code is properly formatted (`make fmt`)
-2. All tests pass (`make test`)
-3. Linter checks pass (`make lint`)
-4. Documentation is updated
-
-## Related Tools
-
-- [Apache Pulsar](https://pulsar.apache.org/)
-- [Pulsar Client Go](https://github.com/apache/pulsar-client-go)
-- [tview](https://github.com/rivo/tview) - Terminal UI library
+- **[Main README](../README.md)** - Complete project documentation
+- **[Apache Pulsar Docs](https://pulsar.apache.org/docs/)** - Official Pulsar documentation
+- **[Pulsar Client Go](https://github.com/apache/pulsar-client-go)** - Go client library
