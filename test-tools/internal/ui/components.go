@@ -54,9 +54,10 @@ func (m *MetricsPanel) UpdateProducerMetrics(snapshot metrics.Snapshot) {
 	m.lastSnapshot = snapshot
 	m.Clear()
 
-	// Calculate current throughput rate
+	// Calculate current throughput rate and bandwidth
 	currentRate := snapshot.Throughput.SendRate
 	rateColor := m.getRateColor(currentRate, m.targetRate)
+	bandwidth := snapshot.Throughput.SendBandwidth
 
 	// Messages section
 	fmt.Fprintf(m, "[%s]┌─ MESSAGES ─────────────────────────┐[-]\n", colorName(ColorHeader))
@@ -65,6 +66,7 @@ func (m *MetricsPanel) UpdateProducerMetrics(snapshot metrics.Snapshot) {
 	fmt.Fprintf(m, " [%s]Rate:    [-][%s]%s[-]\n", colorName(ColorLabel), rateColor, formatRate(currentRate))
 	fmt.Fprintf(m, " [%s]Target:  [-]%s\n", colorName(ColorLabel), formatRate(m.targetRate))
 	fmt.Fprintf(m, " [%s]Bytes:   [-][%s]%s[-]\n", colorName(ColorLabel), colorName(ColorGood), formatBytes(snapshot.BytesSent))
+	fmt.Fprintf(m, " [%s]Bandwidth:[-][%s]%s[-]\n", colorName(ColorLabel), colorName(ColorGood), formatBandwidth(bandwidth))
 
 	// Latency section
 	fmt.Fprintf(m, "\n[%s]┌─ LATENCY ──────────────────────────┐[-]\n", colorName(ColorHeader))
@@ -84,6 +86,7 @@ func (m *MetricsPanel) UpdateConsumerMetrics(snapshot metrics.Snapshot) {
 	// Calculate current throughput rate
 	currentRate := snapshot.Throughput.ReceiveRate
 	rateColor := m.getRateColor(currentRate, m.targetRate)
+	bandwidth := snapshot.Throughput.ReceiveBandwidth
 
 	// Messages section
 	fmt.Fprintf(m, "[%s]┌─ MESSAGES ─────────────────────────┐[-]\n", colorName(ColorHeader))
@@ -92,6 +95,7 @@ func (m *MetricsPanel) UpdateConsumerMetrics(snapshot metrics.Snapshot) {
 	fmt.Fprintf(m, " [%s]Failed:  [-][%s]%s[-] msgs\n", colorName(ColorLabel), m.getFailureColor(snapshot.MessagesFailed), formatNumber(snapshot.MessagesFailed))
 	fmt.Fprintf(m, " [%s]Rate:    [-][%s]%s[-]\n", colorName(ColorLabel), rateColor, formatRate(currentRate))
 	fmt.Fprintf(m, " [%s]Bytes:   [-][%s]%s[-]\n", colorName(ColorLabel), colorName(ColorGood), formatBytes(snapshot.BytesReceived))
+	fmt.Fprintf(m, " [%s]Bandwidth:[-][%s]%s[-]\n", colorName(ColorLabel), colorName(ColorGood), formatBandwidth(bandwidth))
 
 	// Acknowledgment rate
 	ackRate := float64(0)
@@ -427,6 +431,21 @@ func formatRate(rate float64) string {
 		return fmt.Sprintf("%.2f K/s", rate/1000)
 	}
 	return fmt.Sprintf("%.2f M/s", rate/1000000)
+}
+
+// formatBandwidth formats bandwidth (bytes per second) for human-readable display
+func formatBandwidth(bytesPerSecond float64) string {
+	const unit = 1024.0
+	if bytesPerSecond < unit {
+		return fmt.Sprintf("%.0f B/s", bytesPerSecond)
+	}
+	if bytesPerSecond < unit*unit {
+		return fmt.Sprintf("%.2f KB/s", bytesPerSecond/unit)
+	}
+	if bytesPerSecond < unit*unit*unit {
+		return fmt.Sprintf("%.2f MB/s", bytesPerSecond/(unit*unit))
+	}
+	return fmt.Sprintf("%.2f GB/s", bytesPerSecond/(unit*unit*unit))
 }
 
 // formatNumber formats large numbers with commas

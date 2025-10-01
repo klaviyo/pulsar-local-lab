@@ -45,14 +45,14 @@ func (c *Collector) RecordSend(bytes int, latency time.Duration) {
 	c.messagesSent.Add(1)
 	c.bytesSent.Add(uint64(bytes))
 	c.latencies.Observe(float64(latency.Milliseconds()))
-	c.throughput.RecordSend()
+	c.throughput.RecordSend(bytes)
 }
 
 // RecordReceive records a received message with atomic operations for thread safety
 func (c *Collector) RecordReceive(bytes int) {
 	c.messagesReceived.Add(1)
 	c.bytesReceived.Add(uint64(bytes))
-	c.throughput.RecordReceive()
+	c.throughput.RecordReceive(bytes)
 }
 
 // RecordAck records a message acknowledgment with atomic operations for thread safety
