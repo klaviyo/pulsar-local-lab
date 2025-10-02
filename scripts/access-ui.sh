@@ -49,7 +49,7 @@ pkill -f "kubectl port-forward.*$BROKER_ADMIN_PORT" 2>/dev/null || true
 sleep 1
 
 # Start port forwarding in background
-kubectl port-forward -n "$NAMESPACE" svc/pulsar-grafana "$GRAFANA_PORT:3000" &
+kubectl port-forward -n "$NAMESPACE" svc/pulsar-grafana "$GRAFANA_PORT:80" &
 GRAFANA_PID=$!
 
 kubectl port-forward -n "$NAMESPACE" svc/pulsar-pulsar-manager "$PULSAR_MANAGER_PORT:9527" &

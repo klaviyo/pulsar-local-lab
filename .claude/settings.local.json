@@ -39,7 +39,11 @@
       "Bash(kubectl get:*)",
       "Read(//Users/fabian.haupt/go/pkg/mod/github.com/apache/**)",
       "Bash(go get:*)",
-      "WebFetch(domain:github.com)"
+      "WebFetch(domain:github.com)",
+      "Bash(kubectl logs:*)",
+      "Bash(kubectl delete:*)",
+      "Bash(helm uninstall:*)",
+      "Bash(helm install:*)"
     ],
     "deny": [],
     "ask": []
