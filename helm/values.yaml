@@ -38,27 +38,33 @@ pulsar:
     replicaCount: 1
 
   bookkeeper:
-    replicaCount: 4
+    replicaCount: 6
     configData:
       # minimal memory use for bookkeeper
       # https://bookkeeper.apache.org/docs/reference/config#db-ledger-storage-settings
-      dbStorage_writeCacheMaxSizeMb: "64"
-      dbStorage_readAheadCacheMaxSizeMb: "64"
-      dbStorage_rocksDB_writeBufferSizeMB: "16"
-      dbStorage_rocksDB_blockCacheSize: "8388608"
+      dbStorage_writeCacheMaxSizeMb: "256"
+      dbStorage_readAheadCacheMaxSizeMb: "256"
+      dbStorage_rocksDB_writeBufferSizeMB: "64"
+      dbStorage_rocksDB_blockCacheSize: "33554432"
+      # Increase JVM max direct memory to accommodate caches (256MB write + 256MB read + overhead)
+      PULSAR_MEM: "-Xms256m -Xmx512m -XX:MaxDirectMemorySize=768m"
     podMonitor:
       enabled: true
 
   broker:
-    replicaCount: 1
+    replicaCount: 3
     configData:
       ## Enable `autoSkipNonRecoverableData` since bookkeeper is running
       ## without persistence
       autoSkipNonRecoverableData: "true"
       # storage settings
-      managedLedgerDefaultEnsembleSize: "1"
-      managedLedgerDefaultWriteQuorum: "1"
-      managedLedgerDefaultAckQuorum: "1"
+      managedLedgerDefaultEnsembleSize: "3"
+      managedLedgerDefaultWriteQuorum: "2"
+      managedLedgerDefaultAckQuorum: "2"
+      maxPublishRatePerTopicInMessages: "50000"
+      maxPublishRatePerTopicInBytes: "52428800"
+      maxMessagePublishBufferSizeInMB: "512"
+      dispatchThrottlingRatePerTopicInMsg: "50000"
     podMonitor:
       enabled: true
 
