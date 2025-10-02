@@ -46,6 +46,8 @@ pulsar:
       dbStorage_readAheadCacheMaxSizeMb: "64"
       dbStorage_rocksDB_writeBufferSizeMB: "16"
       dbStorage_rocksDB_blockCacheSize: "8388608"
+    podMonitor:
+      enabled: true
 
   broker:
     replicaCount: 2
@@ -57,9 +59,17 @@ pulsar:
       managedLedgerDefaultEnsembleSize: "1"
       managedLedgerDefaultWriteQuorum: "1"
       managedLedgerDefaultAckQuorum: "1"
+    podMonitor:
+      enabled: true
 
   proxy:
     replicaCount: 1
+    podMonitor:
+      enabled: true
+
+  zookeeper:
+    podMonitor:
+      enabled: true
 
   # Enable monitoring stack with Grafana dashboards
   kube-prometheus-stack:
@@ -86,20 +96,3 @@ pulsar:
           searchNamespace: ALL
       persistence:
         enabled: false
-
-  # Enable pod monitors for metrics collection
-  bookkeeper:
-    podMonitor:
-      enabled: true
-
-  broker:
-    podMonitor:
-      enabled: true
-
-  proxy:
-    podMonitor:
-      enabled: true
-
-  zookeeper:
-    podMonitor:
-      enabled: true
