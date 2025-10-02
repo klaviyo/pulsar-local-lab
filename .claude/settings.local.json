@@ -48,7 +48,8 @@
       "Bash(./bin/consumer:*)",
       "Bash(python3:*)",
       "Bash(kubectl exec:*)",
-      "Bash(kubectl describe:*)"
+      "Bash(kubectl describe:*)",
+      "Bash(kubectl top:*)"
     ],
     "deny": [],
     "ask": []

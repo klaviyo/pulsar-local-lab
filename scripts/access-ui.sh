@@ -68,6 +68,13 @@ BROKER_ADMIN_PID=$!
 # Wait a moment for port forwards to establish
 sleep 2
 
+# Get Grafana credentials from secret
+GRAFANA_USERNAME="admin"
+GRAFANA_PASSWORD=""
+if kubectl get secret -n "$NAMESPACE" pulsar-grafana &> /dev/null; then
+    GRAFANA_PASSWORD=$(kubectl get secret -n "$NAMESPACE" pulsar-grafana -o jsonpath='{.data.admin-password}' 2>/dev/null | base64 -d 2>/dev/null || echo "<check secret>")
+fi
+
 # Get Pulsar Manager credentials from secret
 MANAGER_USERNAME=""
 MANAGER_PASSWORD=""
@@ -82,7 +89,12 @@ echo "=========================================="
 echo ""
 echo "📊 Grafana Dashboards:"
 echo "   URL:         http://localhost:$GRAFANA_PORT"
-echo "   Credentials: admin/admin (default)"
+if [ -n "$GRAFANA_PASSWORD" ]; then
+    echo "   Username:    $GRAFANA_USERNAME"
+    echo "   Password:    $GRAFANA_PASSWORD"
+else
+    echo "   Credentials: admin/<check secret>"
+fi
 echo ""
 echo "🎛️  Pulsar Manager (Admin Console):"
 echo "   URL:         http://localhost:$PULSAR_MANAGER_PORT"

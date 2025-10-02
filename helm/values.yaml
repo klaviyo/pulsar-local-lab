@@ -38,44 +38,42 @@ pulsar:
     replicaCount: 1
 
   bookkeeper:
-    replicaCount: 6
+    replicaCount: 2
     configData:
-      # minimal memory use for bookkeeper
-      # https://bookkeeper.apache.org/docs/reference/config#db-ledger-storage-settings
       dbStorage_writeCacheMaxSizeMb: "256"
       dbStorage_readAheadCacheMaxSizeMb: "256"
       dbStorage_rocksDB_writeBufferSizeMB: "64"
       dbStorage_rocksDB_blockCacheSize: "33554432"
-      # Increase JVM max direct memory to accommodate caches (256MB write + 256MB read + overhead)
       PULSAR_MEM: "-Xms256m -Xmx512m -XX:MaxDirectMemorySize=768m"
     podMonitor:
       enabled: true
+      interval: 30s
 
   broker:
-    replicaCount: 3
+    replicaCount: 1
     configData:
-      ## Enable `autoSkipNonRecoverableData` since bookkeeper is running
-      ## without persistence
       autoSkipNonRecoverableData: "true"
-      # storage settings
-      managedLedgerDefaultEnsembleSize: "3"
-      managedLedgerDefaultWriteQuorum: "2"
-      managedLedgerDefaultAckQuorum: "2"
-      maxPublishRatePerTopicInMessages: "50000"
-      maxPublishRatePerTopicInBytes: "52428800"
+      managedLedgerDefaultEnsembleSize: "1"
+      managedLedgerDefaultWriteQuorum: "1"
+      managedLedgerDefaultAckQuorum: "1"
+      maxPublishRatePerTopicInMessages: "100000"
+      maxPublishRatePerTopicInBytes: "104857600"
       maxMessagePublishBufferSizeInMB: "512"
-      dispatchThrottlingRatePerTopicInMsg: "50000"
+      dispatchThrottlingRatePerTopicInMsg: "100000"
     podMonitor:
       enabled: true
+      interval: 30s
 
   proxy:
     replicaCount: 1
     podMonitor:
       enabled: true
+      interval: 30s
 
   zookeeper:
     podMonitor:
       enabled: true
+      interval: 30s
 
   # Enable monitoring stack with Grafana dashboards
   kube-prometheus-stack:
@@ -84,6 +82,9 @@ pulsar:
       enabled: true
       prometheusSpec:
         retention: 24h
+        # Reduce scrape frequency globally to minimize overhead
+        scrapeInterval: 30s
+        evaluationInterval: 30s
         storageSpec:
           volumeClaimTemplate:
             spec:
