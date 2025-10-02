@@ -128,7 +128,27 @@ func main() {
 	pool, err := worker.NewProducerPool(ctx, cfg)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ ERROR: Failed to initialize producer pool\n")
-		fmt.Fprintf(os.Stderr, "Cause: %v\n\n", err)
+		fmt.Fprintf(os.Stderr, "Error chain: %v\n", err)
+		fmt.Fprintf(os.Stderr, "Error type:  %T\n\n", err)
+
+		// Print full error chain
+		fmt.Fprintf(os.Stderr, "Full error details:\n")
+		currentErr := err
+		for currentErr != nil {
+			fmt.Fprintf(os.Stderr, "  → %v (type: %T)\n", currentErr, currentErr)
+			if unwrapped, ok := currentErr.(interface{ Unwrap() error }); ok {
+				currentErr = unwrapped.Unwrap()
+			} else {
+				break
+			}
+		}
+		fmt.Fprintf(os.Stderr, "\n")
+
+		fmt.Fprintf(os.Stderr, "Configuration:\n")
+		fmt.Fprintf(os.Stderr, "  Service URL: %s\n", cfg.Pulsar.ServiceURL)
+		fmt.Fprintf(os.Stderr, "  Admin URL:   %s\n", cfg.Pulsar.AdminURL)
+		fmt.Fprintf(os.Stderr, "  Topic:       %s\n", cfg.Pulsar.Topic)
+		fmt.Fprintf(os.Stderr, "  Partitions:  %d\n\n", cfg.Pulsar.TopicPartitions)
 		fmt.Fprintf(os.Stderr, "Common issues:\n")
 		fmt.Fprintf(os.Stderr, "  • Pulsar broker not accessible\n")
 		fmt.Fprintf(os.Stderr, "    → Check port forwarding: kubectl port-forward -n pulsar svc/pulsar-broker 6650:6650\n")

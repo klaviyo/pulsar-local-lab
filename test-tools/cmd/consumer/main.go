@@ -131,6 +131,12 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "\n❌ ERROR: Failed to initialize consumer pool\n")
 		fmt.Fprintf(os.Stderr, "Cause: %v\n\n", err)
+		fmt.Fprintf(os.Stderr, "Details:\n")
+		fmt.Fprintf(os.Stderr, "  Service URL:  %s\n", cfg.Pulsar.ServiceURL)
+		fmt.Fprintf(os.Stderr, "  Admin URL:    %s\n", cfg.Pulsar.AdminURL)
+		fmt.Fprintf(os.Stderr, "  Topic:        %s\n", cfg.Pulsar.Topic)
+		fmt.Fprintf(os.Stderr, "  Partitions:   %d\n", cfg.Pulsar.TopicPartitions)
+		fmt.Fprintf(os.Stderr, "  Subscription: %s (%s)\n\n", cfg.Consumer.SubscriptionName, cfg.Consumer.SubscriptionType)
 		fmt.Fprintf(os.Stderr, "Common issues:\n")
 		fmt.Fprintf(os.Stderr, "  • Pulsar broker not accessible\n")
 		fmt.Fprintf(os.Stderr, "    → Check port forwarding: kubectl port-forward -n pulsar svc/pulsar-broker 6650:6650\n")

@@ -33,6 +33,10 @@ if ! kubectl get svc -n "$NAMESPACE" pulsar-pulsar-manager &> /dev/null; then
     echo "Warning: Pulsar Manager service not found in namespace '$NAMESPACE'"
 fi
 
+if ! kubectl get svc -n "$NAMESPACE" pulsar-proxy &> /dev/null; then
+    echo "Warning: Pulsar Proxy service not found in namespace '$NAMESPACE'"
+fi
+
 if ! kubectl get svc -n "$NAMESPACE" pulsar-broker &> /dev/null; then
     echo "Warning: Pulsar Broker service not found in namespace '$NAMESPACE'"
 fi
@@ -55,7 +59,7 @@ GRAFANA_PID=$!
 kubectl port-forward -n "$NAMESPACE" svc/pulsar-pulsar-manager "$PULSAR_MANAGER_PORT:9527" &
 MANAGER_PID=$!
 
-kubectl port-forward -n "$NAMESPACE" svc/pulsar-broker "$BROKER_CLIENT_PORT:6650" &
+kubectl port-forward -n "$NAMESPACE" svc/pulsar-proxy "$BROKER_CLIENT_PORT:6650" &
 BROKER_CLIENT_PID=$!
 
 kubectl port-forward -n "$NAMESPACE" svc/pulsar-broker "$BROKER_ADMIN_PORT:8080" &
@@ -89,8 +93,8 @@ else
     echo "   Credentials: Run './scripts/get-manager-credentials.sh'"
 fi
 echo ""
-echo "🔌 Pulsar Broker:"
-echo "   Client URL:  pulsar://localhost:$BROKER_CLIENT_PORT"
+echo "🔌 Pulsar Services:"
+echo "   Client URL:  pulsar://localhost:$BROKER_CLIENT_PORT (via proxy)"
 echo "   Admin API:   http://localhost:$BROKER_ADMIN_PORT"
 echo ""
 echo "=========================================="

@@ -43,7 +43,11 @@
       "Bash(kubectl logs:*)",
       "Bash(kubectl delete:*)",
       "Bash(helm uninstall:*)",
-      "Bash(helm install:*)"
+      "Bash(helm install:*)",
+      "Bash(lsof:*)",
+      "Bash(./bin/consumer:*)",
+      "Bash(python3:*)",
+      "Bash(kubectl exec:*)"
     ],
     "deny": [],
     "ask": []
