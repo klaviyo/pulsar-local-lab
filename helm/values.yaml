@@ -38,7 +38,7 @@ pulsar:
     replicaCount: 1
 
   bookkeeper:
-    replicaCount: 2
+    replicaCount: 4
     configData:
       # minimal memory use for bookkeeper
       # https://bookkeeper.apache.org/docs/reference/config#db-ledger-storage-settings
@@ -50,7 +50,7 @@ pulsar:
       enabled: true
 
   broker:
-    replicaCount: 2
+    replicaCount: 1
     configData:
       ## Enable `autoSkipNonRecoverableData` since bookkeeper is running
       ## without persistence
