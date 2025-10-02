@@ -123,10 +123,25 @@ func main() {
 	}()
 
 	// Initialize producer worker pool
+	// Temporarily restore stderr so errors are visible to user
+	os.Stderr = origStderr
 	pool, err := worker.NewProducerPool(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to create producer pool: %v", err)
+		fmt.Fprintf(os.Stderr, "\n❌ ERROR: Failed to initialize producer pool\n")
+		fmt.Fprintf(os.Stderr, "Cause: %v\n\n", err)
+		fmt.Fprintf(os.Stderr, "Common issues:\n")
+		fmt.Fprintf(os.Stderr, "  • Pulsar broker not accessible\n")
+		fmt.Fprintf(os.Stderr, "    → Check port forwarding: kubectl port-forward -n pulsar svc/pulsar-broker 6650:6650\n")
+		fmt.Fprintf(os.Stderr, "    → Or run: ./scripts/access-ui.sh\n\n")
+		fmt.Fprintf(os.Stderr, "  • Incorrect service URL in config (default: pulsar://localhost:6650)\n")
+		fmt.Fprintf(os.Stderr, "    → Set PULSAR_SERVICE_URL or use --service-url flag\n\n")
+		fmt.Fprintf(os.Stderr, "  • Admin API not accessible (needed for topic creation)\n")
+		fmt.Fprintf(os.Stderr, "    → Check port forwarding: kubectl port-forward -n pulsar svc/pulsar-broker 8080:8080\n")
+		fmt.Fprintf(os.Stderr, "    → Or run: ./scripts/access-ui.sh\n\n")
+		os.Exit(1)
 	}
+	// Restore redirection for TUI
+	os.Stderr = stderrWriter
 
 	// Start the interactive UI with log buffer (blocks until quit)
 	_ = ui.RunProducerUI(ctx, pool, logBuffer)
