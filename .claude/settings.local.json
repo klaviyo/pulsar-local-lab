@@ -49,7 +49,9 @@
       "Bash(python3:*)",
       "Bash(kubectl exec:*)",
       "Bash(kubectl describe:*)",
-      "Bash(kubectl top:*)"
+      "Bash(kubectl top:*)",
+      "Read(//var/folders/fp/j65h7fj56l9f4nnt2trtt4wc0000gp/T/TemporaryItems/NSIRD_screencaptureui_PIziR4/**)",
+      "Bash(pulsar-perf produce:*)"
     ],
     "deny": [],
     "ask": []
